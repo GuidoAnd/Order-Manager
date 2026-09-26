@@ -1,0 +1,9 @@
+/internal-docs/
+/docs/AGENTS.md
+/docs/CONSTRAINTS.md
+/docs/PLAN.md
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+/data/
