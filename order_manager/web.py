@@ -23,7 +23,7 @@ def layout(title: str, content: str, head: str = "") -> str:
 </head>
 <body>
     <header class="top">
-        <a class="brand" href="/">Order Manager <small>v0.1</small></a>
+        <a class="brand" href="/">Order Manager <small>v0.2 en desarrollo</small></a>
         <nav aria-label="Secciones">
             <a href="/">Dashboard</a>
             <a href="/jornada">Jornada</a>
@@ -36,7 +36,7 @@ def layout(title: str, content: str, head: str = "") -> str:
         <h1>{h(title)}</h1>
         {content}
     </main>
-    <footer>Order Manager · v0.1</footer>
+    <footer>Order Manager · v0.2 en desarrollo</footer>
 </body>
 </html>"""
 
@@ -71,12 +71,19 @@ def metrics(data: dict, include_journeys: bool = False) -> str:
 def dashboard(store: Store) -> str:
     journey = store.get_journey()
     if journey:
+        journey_stats = summary(journey)
         active = (
             f'<p>Jornada activa: <strong>{h(journey["title"])}</strong></p>'
-            + metrics(summary(journey))
+            + metrics(journey_stats)
         )
+        authors = "\n".join(
+            f'<div class="author-summary"><h3>{h(author["name"])}</h3>'
+            f'{metrics(journey_stats["by_author"][author["id"]])}</div>'
+            for author in journey["authors"]
+        ) or "<p>Aún no hay autores.</p>"
     else:
         active = '<p>No hay una jornada activa. <a href="/jornada">Crear jornada</a>.</p>'
+        authors = "<p>No hay una jornada activa.</p>"
 
     globals_ = store.get_globals()
     categories = "\n".join(
@@ -90,6 +97,10 @@ def dashboard(store: Store) -> str:
     body = f"""<section class="panel">
         <h2>Jornada</h2>
         {active}
+    </section>
+    <section class="panel">
+        <h2>Resultados por autor</h2>
+        {authors}
     </section>
     <section class="panel">
         <h2>Acumulado global</h2>
@@ -108,6 +119,57 @@ def _author_row(author: dict) -> str:
             <button class="danger" name="action" value="delete_author">Eliminar</button>
         </form>
     </li>"""
+
+
+def _author_results(author: dict, orders: list[dict], stats: dict) -> str:
+    running_total = 0
+    rows = []
+    for order in orders:
+        running_total += order["total"]
+        details = "<br>".join(
+            f'{h(line["name"])} × {h(line["quantity"])} '
+            f'({h(line["subtotal"])})'
+            for line in order["lines"]
+        )
+        rows.append(
+            f'<tr><td>#{h(order["number"])}</td><td>{details}</td>'
+            f'<td>{h(order["total"])}</td><td>{h(running_total)}</td></tr>'
+        )
+    order_rows = "\n".join(rows) or (
+        '<tr><td colspan="4">Este autor todavía no tiene órdenes.</td></tr>'
+    )
+    average = f"{stats['average']:.2f}"
+    article_rows = "\n".join(
+        f'<tr><td>{h(name)}</td><td>{h(totals["units"])}</td>'
+        f'<td>{h(totals["revenue"])}</td></tr>'
+        for name, totals in sorted(
+            stats["by_article"].items(),
+            key=lambda item: (-item[1]["units"], item[0].casefold()),
+        )
+    ) or '<tr><td colspan="3">Sin artículos facturados.</td></tr>'
+    return f"""<div class="author-summary">
+        <h3>{h(author['name'])}</h3>
+        {metrics(stats)}
+        <p>Promedio por orden: {h(average)}</p>
+        <div class="table-wrap">
+            <table>
+                <thead><tr>
+                    <th>Orden</th><th>Artículos facturados</th>
+                    <th>Total de la orden</th><th>Acumulado del autor</th>
+                </tr></thead>
+                <tbody>{order_rows}</tbody>
+            </table>
+        </div>
+        <h4>Artículos facturados por este autor</h4>
+        <div class="table-wrap">
+            <table>
+                <thead><tr>
+                    <th>Artículo</th><th>Unidades</th><th>Importe</th>
+                </tr></thead>
+                <tbody>{article_rows}</tbody>
+            </table>
+        </div>
+    </div>"""
 
 
 def journey_page(store: Store, error: str = "") -> str:
@@ -129,6 +191,19 @@ def journey_page(store: Store, error: str = "") -> str:
     authors = "\n".join(_author_row(author) for author in journey["authors"])
     if not authors:
         authors = "<li>Aún no hay autores.</li>"
+    stats = summary(journey)
+    author_results = "\n".join(
+        _author_results(
+            author,
+            sorted(
+                (order for order in journey["orders"]
+                 if order["author_id"] == author["id"]),
+                key=lambda order: order["number"],
+            ),
+            stats["by_author"][author["id"]],
+        )
+        for author in journey["authors"]
+    ) or "<p>Aún no hay autores.</p>"
 
     body = f"""<section class="panel">
         <h2>{h(journey['title'])}</h2>
@@ -157,6 +232,10 @@ def journey_page(store: Store, error: str = "") -> str:
         </div>
     </section>
     <section class="panel">
+        <h2>Resultados por autor</h2>
+        {author_results}
+    </section>
+    <section class="panel">
         <h2>Finalizar jornada</h2>
         <div class="actions journey-final-actions">
             <a class="button" href="/confirmar/close">Cerrar y contabilizar ventas</a>
@@ -170,30 +249,67 @@ def journey_page(store: Store, error: str = "") -> str:
 
 def _catalog_option(article: dict, selected_id: str) -> str:
     selected = " selected" if article["id"] == selected_id else ""
+    price = article["unit_price"]
+    price_label = "precio a completar" if price is None else str(price)
+    temporary_label = " · de esta jornada" if article.get("temporary") else ""
     return (
         f'<option value="{h(article["id"])}"{selected}>'
-        f'{h(article["name"])} · {h(article["unit_price"])}</option>'
+        f'{h(article["name"])} · {h(price_label)}{h(temporary_label)}</option>'
     )
+
+
+def _catalog_options(catalog: list[dict], selected_id: str) -> str:
+    options = []
+    current_group = None
+    for article in sorted(
+        catalog,
+        key=lambda item: (
+            item["category"].casefold(),
+            item["subcategory"].casefold(),
+            item["name"].casefold(),
+        ),
+    ):
+        group = (article["category"], article["subcategory"])
+        if group != current_group:
+            if current_group is not None:
+                options.append("</optgroup>")
+            options.append(f'<optgroup label="{h(" / ".join(group))}">')
+            current_group = group
+        options.append(_catalog_option(article, selected_id))
+    if current_group is not None:
+        options.append("</optgroup>")
+    return "\n".join(options)
 
 
 def _order_line(index: int, row: dict, catalog: list[dict]) -> str:
     def value(key: str) -> str:
         return h(row.get(key, ""))
 
-    catalog_options = "\n".join(
-        _catalog_option(article, row.get("catalog_id", ""))
-        for article in catalog
-    )
+    catalog_options = _catalog_options(catalog, row.get("catalog_id", ""))
     quantity = value("quantity") or "1"
+    custom_open = " open" if row.get("name") and not row.get("catalog_id") else ""
     return f"""<fieldset>
         <legend>Artículo {index + 1}</legend>
-        <label>Elegir del catálogo (opcional)
+        <label>Elegir del inventario
             <select name="catalog_id_{index}">
-                <option value="">Artículo nuevo</option>
+                <option value="">Seleccionar artículo o agregar uno nuevo</option>
                 {catalog_options}
             </select>
         </label>
         <div class="grid">
+            <label>Cantidad
+                <input name="quantity_{index}" type="number" min="1" step="1"
+                       value="{quantity}" required>
+            </label>
+            <label>Precio unitario si falta en el inventario
+                <input name="unit_price_{index}" type="number" min="0" step="1"
+                       value="{value('unit_price')}">
+            </label>
+        </div>
+        <details{custom_open}>
+            <summary>Agregar un artículo nuevo a esta orden</summary>
+            <p>Completa estos datos cuando no selecciones un artículo del inventario.</p>
+            <div class="grid">
             <label>Nombre
                 <input name="name_{index}" value="{value('name')}">
             </label>
@@ -203,15 +319,8 @@ def _order_line(index: int, row: dict, catalog: list[dict]) -> str:
             <label>Subcategoría
                 <input name="subcategory_{index}" value="{value('subcategory')}">
             </label>
-            <label>Cantidad
-                <input name="quantity_{index}" type="number" min="1" step="1"
-                       value="{quantity}" required>
-            </label>
-            <label>Precio unitario
-                <input name="unit_price_{index}" type="number" min="0" step="1"
-                       value="{value('unit_price')}">
-            </label>
-        </div>
+            </div>
+        </details>
         <button class="danger" name="action" value="remove_{index}">
             Quitar artículo
         </button>
@@ -272,37 +381,48 @@ def orders_page(
         f'{h(author["name"])}</option>'
         for author in journey["authors"]
     )
+    available_articles = store.get_available_articles()
     line_cards = "\n".join(
-        _order_line(index, row, journey["articles"])
+        _order_line(index, row, available_articles)
         for index, row in enumerate(rows)
     )
     author_names = {
         author["id"]: author["name"]
         for author in journey["authors"]
     }
-    order_rows = "\n".join(
-        _order_row(order, author_names)
-        for order in journey["orders"]
-    )
-    if not order_rows:
-        order_rows = '<tr><td colspan="5">Sin órdenes.</td></tr>'
+    order_sections = []
+    for author in journey["authors"]:
+        author_orders = [
+            order for order in journey["orders"]
+            if order["author_id"] == author["id"]
+        ]
+        order_rows = "\n".join(
+            _order_row(order, author_names)
+            for order in author_orders
+        ) or '<tr><td colspan="5">Sin órdenes.</td></tr>'
+        order_sections.append(f"""<div class="author-summary">
+            <h3>{h(author['name'])}</h3>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr>
+                        <th>Número</th><th>Autor</th><th>Artículos</th>
+                        <th>Total</th><th>Acciones</th>
+                    </tr></thead>
+                    <tbody>{order_rows}</tbody>
+                </table>
+            </div>
+        </div>""")
+    grouped_orders = "\n".join(order_sections) or "<p>Aún no hay autores.</p>"
     form_title = "Editar orden" if selected_order else "Crear orden"
 
     body = f"""<section class="panel">
-        <h2>Órdenes de la jornada</h2>
-        <div class="table-wrap">
-            <table>
-                <thead><tr>
-                    <th>Número</th><th>Autor</th><th>Artículos</th>
-                    <th>Total</th><th>Acciones</th>
-                </tr></thead>
-                <tbody>{order_rows}</tbody>
-            </table>
-        </div>
+        <h2>Órdenes por autor</h2>
+        {grouped_orders}
     </section>
     <section class="panel">
         <h2>{form_title}</h2>
-        <p>Agrega varias líneas. Cada línea permite una cantidad, por ejemplo Café × 3.
+        <p>Selecciona artículos del inventario y agrega varias líneas, por ejemplo
+           Café × 3. Completa el precio cuando el artículo no lo tenga definido.
            El total se calcula al guardar.</p>
         <form method="post" action="/ui/orders/form">
             <input type="hidden" name="count" value="{len(rows)}">
@@ -324,11 +444,13 @@ def orders_page(
 
 
 def _article_row(article: dict) -> str:
+    price = article["unit_price"]
+    price_label = "Pendiente" if price is None else str(price)
     return f"""<tr>
         <td>{h(article['name'])}</td>
         <td>{h(article['category'])}</td>
         <td>{h(article['subcategory'])}</td>
-        <td>{h(article['unit_price'])}</td>
+        <td>{h(price_label)}</td>
         <td>
             <div class="row-actions">
                 <form method="get" action="/articulos">
@@ -344,6 +466,16 @@ def _article_row(article: dict) -> str:
     </tr>"""
 
 
+def _temporary_article_row(article: dict) -> str:
+    return f"""<tr>
+        <td>{h(article['name'])}</td>
+        <td>{h(article['category'])}</td>
+        <td>{h(article['subcategory'])}</td>
+        <td>{h(article['unit_price'])}</td>
+        <td>Temporal de esta jornada</td>
+    </tr>"""
+
+
 def articles_page(store: Store, edit_id: str = "", error: str = "") -> str:
     journey = store.get_journey()
     if not journey:
@@ -354,21 +486,55 @@ def articles_page(store: Store, edit_id: str = "", error: str = "") -> str:
         (article for article in journey["articles"] if article["id"] == edit_id),
         {},
     )
-    rows = "\n".join(_article_row(article) for article in journey["articles"])
-    if not rows:
-        rows = '<tr><td colspan="5">Sin artículos.</td></tr>'
+    sold_articles = summary(journey)["by_article"]
+    sold_rows = "\n".join(
+        f"<tr><td>{h(name)}</td><td>{h(totals['units'])}</td>"
+        f"<td>{h(totals['revenue'])}</td></tr>"
+        for name, totals in sorted(
+            sold_articles.items(),
+            key=lambda item: (-item[1]["units"], item[0].casefold()),
+        )
+    )
+    if not sold_rows:
+        sold_rows = '<tr><td colspan="3">Todavía no hay artículos vendidos.</td></tr>'
+
+    available_rows = "\n".join(
+        _article_row(article) for article in journey["articles"]
+    )
+    temporary_rows = "\n".join(
+        _temporary_article_row(article)
+        for article in store.get_available_articles()
+        if article.get("temporary")
+    )
+    if temporary_rows:
+        available_rows = "\n".join((available_rows, temporary_rows))
+    if not available_rows:
+        available_rows = '<tr><td colspan="5">Sin artículos disponibles.</td></tr>'
     form_title = "Editar artículo" if current else "Agregar artículo"
 
     body = f"""<section class="panel">
-        <h2>Catálogo de la jornada</h2>
-        <p>Los artículos guardados sirven como referencia para nuevas órdenes.</p>
+        <h2>Catálogo vendido de la jornada</h2>
+        <p>Unidades facturadas en las órdenes actuales, de mayor a menor.</p>
+        <div class="table-wrap">
+            <table>
+                <thead><tr>
+                    <th>Artículo</th><th>Unidades vendidas</th><th>Importe</th>
+                </tr></thead>
+                <tbody>{sold_rows}</tbody>
+            </table>
+        </div>
+    </section>
+    <section class="panel">
+        <h2>Artículos disponibles para órdenes</h2>
+        <p>Los artículos guardados y los temporales de órdenes vigentes sirven
+           como referencia para nuevas órdenes.</p>
         <div class="table-wrap">
             <table>
                 <thead><tr>
                     <th>Nombre</th><th>Categoría</th><th>Subcategoría</th>
                     <th>Precio</th><th>Acciones</th>
                 </tr></thead>
-                <tbody>{rows}</tbody>
+                <tbody>{available_rows}</tbody>
             </table>
         </div>
     </section>
@@ -387,9 +553,9 @@ def articles_page(store: Store, edit_id: str = "", error: str = "") -> str:
                     <input name="subcategory"
                            value="{h(current.get('subcategory', ''))}" required>
                 </label>
-                <label>Precio unitario
+                <label>Precio unitario (opcional)
                     <input name="unit_price" type="number" min="0" step="1"
-                           value="{h(current.get('unit_price', ''))}" required>
+                           value="{h(current.get('unit_price') if current.get('unit_price') is not None else '')}">
                 </label>
             </div>
             <button type="submit">Guardar artículo</button>

@@ -32,7 +32,7 @@ class ArticleInput(BaseModel):
     name: str
     category: str
     subcategory: str
-    unit_price: int = Field(ge=0)
+    unit_price: int | None = Field(default=None, ge=0)
 
 
 class LineInput(BaseModel):
@@ -50,7 +50,7 @@ class OrderInput(BaseModel):
 
 
 def make_app(global_file: Path | None = None) -> FastAPI:
-    app = FastAPI(title="Order Manager", version="0.1")
+    app = FastAPI(title="Order Manager", version="0.2-dev")
     store = Store(global_file or ROOT / "data" / "global_stats.json")
     app.state.store = store
 
@@ -119,7 +119,11 @@ def make_app(global_file: Path | None = None) -> FastAPI:
 
     @app.get("/api/articles")
     def articles():
-        return (store.get_journey() or {}).get("articles", [])
+        return store.get_available_articles() if store.get_journey() else []
+
+    @app.get("/api/inventory")
+    def inventory():
+        return store.get_inventory()
 
     @app.post("/api/articles", status_code=201)
     def add_article(data: ArticleInput):

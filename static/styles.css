@@ -192,6 +192,23 @@ button:hover, .button:hover {
     overflow-wrap: anywhere;
 }
 
+.author-summary + .author-summary {
+    border-top: 1px solid #dce3ea;
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+}
+
+details {
+    border: 1px solid #dce3ea;
+    border-radius: 8px;
+    padding: .75rem 1rem;
+}
+
+summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
 fieldset {
     border: 1px solid #c5d0dd;
     border-radius: 8px;

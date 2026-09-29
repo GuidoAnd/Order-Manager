@@ -8,7 +8,9 @@ import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from threading import RLock
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
+
+from .seed_inventory import initial_inventory
 
 
 class DomainError(Exception):
@@ -50,6 +52,7 @@ def summary(journey: dict) -> dict:
             "units": 0,
             "revenue": 0,
             "average": 0,
+            "by_article": {},
         }
     for order in orders:
         author = result["by_author"].get(order["author_id"])
@@ -67,6 +70,8 @@ def summary(journey: dict) -> dict:
                 (result["by_category"], line["category"]),
                 (result["by_article"], article_key),
             )
+            if author:
+                groups += ((author["by_article"], article_key),)
             for container, key in groups:
                 item = container.setdefault(key, {"units": 0, "revenue": 0})
                 item["units"] += qty
@@ -84,10 +89,16 @@ class Store:
         self.events: list[dict] = []
         self.last_export: tuple[str, bytes] | None = None
         self.global_file = global_file
+        self.inventory_file = global_file.parent / "inventory.json"
         if global_file.exists():
             self.globals = json.loads(global_file.read_text())
         else:
             self.globals = fresh_globals()
+        if self.inventory_file.exists():
+            self.inventory = json.loads(self.inventory_file.read_text())
+        else:
+            self.inventory = initial_inventory()
+            self._write_inventory(self.inventory)
 
     def _active(self) -> dict:
         if self.journey is None:
@@ -118,6 +129,41 @@ class Store:
         with self.lock:
             return deepcopy(self.globals)
 
+    def get_inventory(self) -> dict:
+        with self.lock:
+            return deepcopy(self.inventory)
+
+    def get_available_articles(self) -> list[dict]:
+        with self.lock:
+            journey = self._active()
+            return deepcopy(journey["articles"] + self._temporary_articles(journey))
+
+    @staticmethod
+    def _temporary_articles(journey: dict) -> list[dict]:
+        def article_key(article: dict) -> tuple[str, str, str]:
+            return tuple(
+                article[field].casefold()
+                for field in ("category", "subcategory", "name")
+            )
+
+        catalog_keys = {article_key(article) for article in journey["articles"]}
+        temporary = {}
+        for order in journey["orders"]:
+            for line in order["lines"]:
+                key = article_key(line)
+                if key in catalog_keys:
+                    continue
+                identity = json.dumps([journey["id"], *key], ensure_ascii=False)
+                temporary[key] = {
+                    "id": f"temporary-{uuid5(NAMESPACE_URL, identity).hex}",
+                    "name": line["name"],
+                    "category": line["category"],
+                    "subcategory": line["subcategory"],
+                    "unit_price": line["unit_price"],
+                    "temporary": True,
+                }
+        return list(temporary.values())
+
     def get_last_export(self) -> tuple[str, bytes]:
         with self.lock:
             if self.last_export is None:
@@ -136,7 +182,7 @@ class Store:
                 "title": title,
                 "opened_at": now(),
                 "authors": [],
-                "articles": [],
+                "articles": deepcopy(self.inventory["articles"]),
                 "orders": [],
                 "events": [],
                 "next_order": 1,
@@ -190,15 +236,20 @@ class Store:
 
     def add_article(self, data: dict) -> dict:
         with self.lock:
-            self._active()
-            item = self._article_data(data)
+            journey = self._active()
+            item = self._article_data(data, allow_empty_price=True)
             item["id"] = str(uuid4())
-            self.journey["articles"].append(item)
+            inventory = deepcopy(self.inventory)
+            inventory["articles"].append(item)
+            self._register_taxonomy(inventory, item)
+            self._write_inventory(inventory)
+            self.inventory = inventory
+            journey["articles"].append(item)
             self._event("article_created", item["name"])
             return deepcopy(item)
 
     @staticmethod
-    def _article_data(data: dict) -> dict:
+    def _article_data(data: dict, allow_empty_price: bool = False) -> dict:
         values = {
             key: str(data.get(key) or "").strip()
             for key in ("name", "category", "subcategory")
@@ -206,6 +257,8 @@ class Store:
         if not all(values.values()):
             raise DomainError("Nombre, categoría y subcategoría son obligatorios.")
         raw_price = data.get("unit_price")
+        if allow_empty_price and raw_price in (None, ""):
+            return {**values, "unit_price": None}
         if isinstance(raw_price, bool) or not str(raw_price).isdecimal():
             raise DomainError("El precio debe ser un número natural.")
         price = int(raw_price)
@@ -213,10 +266,41 @@ class Store:
             raise DomainError("El precio debe ser un número natural.")
         return {**values, "unit_price": price}
 
+    @staticmethod
+    def _register_taxonomy(inventory: dict, article: dict) -> None:
+        category_name = article["category"]
+        category = next(
+            (item for item in inventory["categories"]
+             if item["name"].casefold() == category_name.casefold()),
+            None,
+        )
+        if category is None:
+            category = {"id": str(uuid4()), "name": category_name}
+            inventory["categories"].append(category)
+        subcategory_name = article["subcategory"]
+        if not any(
+            item["category_id"] == category["id"]
+            and item["name"].casefold() == subcategory_name.casefold()
+            for item in inventory["subcategories"]
+        ):
+            inventory["subcategories"].append({
+                "id": str(uuid4()),
+                "name": subcategory_name,
+                "category_id": category["id"],
+            })
+
     def update_article(self, article_id: str, data: dict) -> dict:
         with self.lock:
-            item = self._find(self._active()["articles"], article_id, "Artículo")
-            item.update(self._article_data(data))
+            journey = self._active()
+            item = self._find(journey["articles"], article_id, "Artículo")
+            updated = self._article_data(data, allow_empty_price=True)
+            inventory = deepcopy(self.inventory)
+            stored = self._find(inventory["articles"], article_id, "Artículo")
+            stored.update(updated)
+            self._register_taxonomy(inventory, stored)
+            self._write_inventory(inventory)
+            self.inventory = inventory
+            item.update(updated)
             self._event("article_updated", item["name"])
             return deepcopy(item)
 
@@ -224,6 +308,11 @@ class Store:
         with self.lock:
             j = self._active()
             item = self._find(j["articles"], article_id, "Artículo")
+            inventory = deepcopy(self.inventory)
+            stored = self._find(inventory["articles"], article_id, "Artículo")
+            inventory["articles"].remove(stored)
+            self._write_inventory(inventory)
+            self.inventory = inventory
             j["articles"].remove(item)
             self._event("article_deleted", item["name"])
 
@@ -241,11 +330,18 @@ class Store:
             if quantity < 1:
                 raise DomainError("La cantidad debe ser un entero positivo.")
             if row.get("catalog_id"):
-                article = self._find(self._active()["articles"], row["catalog_id"], "Artículo")
+                article = self._find(
+                    self.get_available_articles(), row["catalog_id"], "Artículo"
+                )
                 data = {
                     key: article[key]
                     for key in ("name", "category", "subcategory", "unit_price")
                 }
+                if data["unit_price"] is None:
+                    data = self._article_data({
+                        **data,
+                        "unit_price": row.get("unit_price"),
+                    })
             else:
                 data = self._article_data(row)
             output.append({
@@ -259,9 +355,12 @@ class Store:
         with self.lock:
             j = self._active()
             self._find(j["authors"], author_id, "Autor")
+            existing_order = (
+                self._find(j["orders"], order_id, "Orden") if order_id else None
+            )
             normalized = self._lines(lines)
-            if order_id:
-                order = self._find(j["orders"], order_id, "Orden")
+            if existing_order:
+                order = existing_order
                 order.update({
                     "author_id": author_id,
                     "lines": normalized,
@@ -295,15 +394,16 @@ class Store:
         with self.lock:
             return summary(self._active())
 
-    def _write_globals(self, data: dict) -> None:
-        self.global_file.parent.mkdir(parents=True, exist_ok=True)
+    @staticmethod
+    def _write_json(path: Path, data: dict, prefix: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
         temporary = None
         try:
             with NamedTemporaryFile(
                 "w",
                 encoding="utf-8",
-                dir=self.global_file.parent,
-                prefix=".globals-",
+                dir=path.parent,
+                prefix=prefix,
                 suffix=".tmp",
                 delete=False,
             ) as stream:
@@ -311,10 +411,16 @@ class Store:
                 json.dump(data, stream, ensure_ascii=False, indent=2)
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.replace(temporary, self.global_file)
+            os.replace(temporary, path)
         finally:
             if temporary and temporary.exists():
                 temporary.unlink()
+
+    def _write_globals(self, data: dict) -> None:
+        self._write_json(self.global_file, data, ".globals-")
+
+    def _write_inventory(self, data: dict) -> None:
+        self._write_json(self.inventory_file, data, ".inventory-")
 
     def close_journey(self) -> bytes:
         with self.lock:
