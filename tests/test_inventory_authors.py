@@ -6,6 +6,7 @@ import json
 import pytest
 
 from order_manager.api import make_app
+from order_manager.article_search import ArticleSearch
 from order_manager.seed_inventory import initial_inventory
 from order_manager.store import DomainError, Store
 from order_manager.web import articles_page, dashboard, journey_page, orders_page
@@ -197,7 +198,9 @@ def test_order_article_is_reusable_only_while_sold_and_keeps_history(tmp_path):
     assert temporary["temporary"] is True
     assert temporary["unit_price"] == 1800
     assert "Limonada de la casa · 1800 · de esta jornada" in orders_page(store)
-    assert "Temporal de esta jornada" in articles_page(store)
+    assert "Temporal de esta jornada" in articles_page(
+        store, search=ArticleSearch(query=line["name"]),
+    )
     assert not any(
         article["name"] == line["name"]
         for article in store.get_inventory()["articles"]

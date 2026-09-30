@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.parse import parse_qs
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -15,6 +15,7 @@ from fastapi.responses import (
 from pydantic import BaseModel, Field
 
 from . import web
+from .article_search import ArticleSearch
 from .store import DomainError, Store
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -239,12 +240,16 @@ def make_app(global_file: Path | None = None) -> FastAPI:
         return web.journey_page(store)
 
     @app.get("/ordenes", response_class=HTMLResponse)
-    def orders_page(edit: str = ""):
-        return web.orders_page(store, edit_id=edit)
+    def orders_page(edit: str = "", article: str = ""):
+        return web.orders_page(store, edit_id=edit, article_id=article)
 
     @app.get("/articulos", response_class=HTMLResponse)
-    def articles_page(edit: str = ""):
-        return web.articles_page(store, edit_id=edit)
+    def articles_page(
+        edit: str = "", q: str = "", category: str = "", subcategory: str = "",
+        page: int = Query(default=1, ge=1),
+    ):
+        search = ArticleSearch(q, category, subcategory, page)
+        return web.articles_page(store, edit_id=edit, search=search)
 
     @app.get("/registros", response_class=HTMLResponse)
     def events_page():
@@ -294,6 +299,7 @@ def make_app(global_file: Path | None = None) -> FastAPI:
     @app.post("/ui/articles")
     async def article_action(request: Request):
         values = await fields(request)
+        search = ArticleSearch.from_form(values)
         try:
             if values.get("action") == "delete":
                 store.delete_article(values.get("article_id", ""))
@@ -302,11 +308,34 @@ def make_app(global_file: Path | None = None) -> FastAPI:
                     key: values.get(key, "")
                     for key in ("name", "category", "subcategory", "unit_price")
                 }
+                inventory = store.get_inventory()
+                data["category"] = values.get("category_article", data["category"])
+                values["category"] = data["category"]
+                category = next(
+                    (item for item in inventory["categories"] if item["name"] == data["category"]),
+                    None,
+                )
+                if category is None:
+                    raise DomainError("Selecciona una categoría existente.")
+                position = inventory["categories"].index(category)
+                data["subcategory"] = values.get(
+                    f"subcategory_article_{position}", data["subcategory"],
+                )
+                values.update(category=data["category"], subcategory=data["subcategory"])
+                values["subcategories"] = {
+                    str(index): values.get(f"subcategory_article_{index}", "")
+                    for index in range(len(inventory["categories"]))
+                }
+                if not any(
+                    item["category_id"] == category["id"] and item["name"] == data["subcategory"]
+                    for item in inventory["subcategories"]
+                ):
+                    raise DomainError("Selecciona una subcategoría de esa categoría.")
                 if values.get("article_id"):
                     store.update_article(values["article_id"], data)
                 else:
                     store.add_article(data)
-            return RedirectResponse("/articulos", status_code=303)
+            return RedirectResponse(search.url() + "#article-results", status_code=303)
         except DomainError as error:
             return HTMLResponse(
                 web.articles_page(
@@ -314,6 +343,7 @@ def make_app(global_file: Path | None = None) -> FastAPI:
                     edit_id=values.get("article_id", ""),
                     error=str(error),
                     values=values if values.get("action") != "delete" else None,
+                    search=search,
                 ),
                 status_code=error.status,
             )

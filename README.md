@@ -22,7 +22,7 @@ esta versión por terminada.
 - [Avances de v0.2](docs/version/v0_2.md)
 - [Arquitectura](docs/ARQUITECTURE.md)
 - [Decisiones técnicas](docs/decisions/) — motivos, alternativas y consecuencias de cambios importantes.
-- [Informes de pruebas](docs/tests/)
+- [Informes de pruebas por versión](docs/tests/README.md)
 - [Auditorías](docs/audits/)
 
 ## Desarrollo local
@@ -42,4 +42,4 @@ Para preparar el entorno de pruebas y desarrollo, instalar
 Las herramientas ASGI que requieren un módulo en la raíz pueden importar `app`
 desde `api.py`; ese archivo expone la misma aplicación.
 
-La jornada activa y la última exportación se mantienen en memoria. Las estadísticas globales se guardan en `data/global_stats.json` y el catálogo en `data/inventory.json`; ambos archivos están excluidos de Git. Los informes de resultados de pruebas se encuentran en `docs/tests/`.
+La jornada activa y la última exportación se mantienen en memoria. Las estadísticas globales se guardan en `data/global_stats.json` y el catálogo en `data/inventory.json`; ambos archivos están excluidos de Git. Los informes de resultados se agrupan por versión en [docs/tests](docs/tests/README.md).

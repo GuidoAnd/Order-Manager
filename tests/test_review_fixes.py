@@ -263,7 +263,7 @@ def test_inventory_failure_is_explained_without_changing_data(
     journey = store.get_journey()
     disk_before = store.inventory_file.read_bytes()
     article_id = original["articles"][0]["id"]
-    values = {"name": "Especial", "category": "Otros", "subcategory": "Casa", "unit_price": 100}
+    values = {"name": "Especial", "category": "Cafetería", "subcategory": "Infusiones", "unit_price": 100}
 
     def fail_write(*_args):
         raise OSError("fallo simulado")
@@ -304,7 +304,10 @@ def test_distinct_articles_keep_separate_totals_and_labels(active_app):
     keys = [article_statistics_key(parts) for parts in identities]
     assert len(stats["by_article"]) == len(identities)
     assert len({article_statistics_label(key) for key in keys}) == len(keys)
-    assert '&quot;Bebidas / Casa&quot; / Frías / Especial' in articles_page(store)
+    sold = articles_page(store).split('id="sold-articles"', 1)[1].split('</section>', 1)[0]
+    assert sold.count('data-label="Artículo">Especial</td>') == 3
+    assert 'data-label="Artículo">Frías / Especial</td>' in sold
+    assert 'Bebidas / Casa' not in sold
     for index, key in enumerate(keys, start=1):
         expected = {"units": index, "revenue": index * 100}
         assert stats["by_article"][key] == expected

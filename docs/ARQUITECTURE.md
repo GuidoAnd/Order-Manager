@@ -50,6 +50,38 @@ En móvil, las acciones finales se apilan y separan. «Guardar orden» ocupa el 
 disponible y tiene mayor tamaño que «Agregar artículo» (verde) y «Quitar artículo»
 (rojo); ambos mantienen una altura mínima de 44 px.
 
+## Consulta y administración de artículos
+
+La lista de artículos disponibles permite buscar por nombre y filtrar por categoría
+y subcategoría. Los resultados por página se adaptan al ancho: dos hasta 374 px,
+tres de 375 a 650 px, cuatro de 651 a 1023 px y cinco desde 1024 px. El servidor
+prepara esas vistas con la misma búsqueda y paginación; CSS muestra una sola,
+sin JavaScript. Las reglas de visibilidad viajan con el HTML para que una hoja
+externa antigua no muestre las cuatro vistas. La URL del CSS incluye un hash de
+su contenido y cambia al actualizar los estilos. Cada vista permite recorrer
+todos los resultados. La búsqueda no distingue mayúsculas ni acentos; sus filtros
+se conservan al cambiar de página, editar, guardar o eliminar un artículo del catálogo.
+
+El catálogo vendido muestra nombre, unidades vendidas e importe; la categoría y
+subcategoría se conservan en los datos para distinguir productos y contabilizar
+sus ventas, aunque no se imprimen junto al nombre.
+
+Agregar y editar artículos usa desplegables de categorías y subcategorías del
+catálogo. CSS muestra las subcategorías de la categoría seleccionada; el servidor
+valida esa relación e ignora las selecciones de categorías inactivas. Los errores
+conservan nombre, precio, selección y búsqueda. Las acciones de Artículos se
+centran hasta 650 px, con colores distintos, separación y altura mínima de 44 px.
+
+Los temporales ofrecen «Ver órdenes que lo usan». Esa vista identifica el producto
+por categoría, subcategoría y nombre, y permite acceder a las acciones de sus órdenes.
+Modificar o eliminar las órdenes recalcula las ventas y la disponibilidad temporal.
+Si un enlace ya no corresponde a un producto vigente, la vista informa esa situación.
+
+Hasta 650 px, las tablas de Artículos y el listado de Órdenes se presentan como fichas
+verticales con etiquetas. Sus datos y acciones caben sin desplazamiento lateral.
+En tamaños mayores conservan la presentación de tabla. Los textos largos pueden
+partirse y los campos y columnas flexibles se ajustan al ancho disponible.
+
 ## Cierre y descarte
 
 «Cerrar y contabilizar ventas» prepara la exportación JSON, incorpora la jornada una sola vez a las estadísticas globales y luego permite limpiar sus datos temporales. Si falla la exportación o el guardado, la jornada permanece disponible para reintentar.

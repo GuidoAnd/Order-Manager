@@ -77,7 +77,7 @@ h1 {
 
 .grid, .metrics {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
     gap: 1rem;
 }
 
@@ -95,6 +95,16 @@ input, select {
     border-radius: 6px;
     margin-top: .3rem;
     font: inherit;
+    min-width: 0;
+    max-width: 100%;
+}
+
+h1, h2, h3, p, label, th, td, .button {
+    overflow-wrap: anywhere;
+}
+
+.panel, fieldset, .author-summary {
+    min-width: 0;
 }
 
 button, .button {
@@ -210,6 +220,20 @@ button:hover, .button:hover {
 
 .row-actions form {
     margin: 0;
+}
+
+.article-search .actions, .pagination {
+    margin-top: 1.25rem;
+    gap: 1rem;
+}
+
+.article-search button, .article-search .button,
+.pagination .button, .responsive-table button, .responsive-table .button {
+    min-height: 44px;
+}
+
+.responsive-table .row-actions {
+    gap: 1rem;
 }
 
 .inline input {
@@ -335,6 +359,39 @@ footer {
 }
 
 @media (max-width: 650px) {
+    .responsive-table {
+        overflow: visible;
+    }
+    .responsive-table table, .responsive-table tbody,
+    .responsive-table tr, .responsive-table td {
+        display: block;
+        width: 100%;
+        min-width: 0;
+    }
+    .responsive-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+    }
+    .responsive-table tr {
+        border: 1px solid #dce3ea;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        padding: .75rem;
+    }
+    .responsive-table td {
+        padding: .5rem 0;
+        border: 0;
+    }
+    .responsive-table td[data-label]::before {
+        content: attr(data-label);
+        display: block;
+        font-weight: 600;
+        color: #40566f;
+        margin-bottom: .25rem;
+    }
     .order-actions {
         flex-direction: column;
         align-items: flex-start;
@@ -359,5 +416,20 @@ footer {
     }
     .authors-layout {
         grid-template-columns: 1fr;
+    }
+}
+
+
+@media (max-width: 650px) {
+    #article-results .actions, #article-results .pagination,
+    #article-results .row-actions, #article-editor .actions {
+        justify-content: center;
+        align-items: center;
+    }
+    #article-results td[data-label="Acciones"] {
+        text-align: center;
+    }
+    #article-editor button {
+        min-height: 44px;
     }
 }

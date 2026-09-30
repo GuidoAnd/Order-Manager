@@ -31,9 +31,12 @@ def test_sold_catalog_counts_units_and_tracks_order_changes(tmp_path):
     sold = page.split("<h2>Catálogo vendido de la jornada</h2>", 1)[1].split(
         "<h2>Artículos disponibles para órdenes</h2>", 1
     )[0]
-    assert sold.index("Bebidas / Aguas / Té") < sold.index("Bebidas / Aguas / Café")
-    assert "<td>3</td>" in sold
-    assert "Bebidas / Aguas / Agua</td>" not in sold
+    assert sold.index('data-label="Artículo">Té') < sold.index('data-label="Artículo">Café')
+    assert '<td data-label="Unidades vendidas">3</td>' in sold
+    assert 'data-label="Artículo">Agua</td>' not in sold
+    assert "<th>Unidades vendidas</th><th>Importe</th>" in sold
+    assert 'data-label="Importe">300</td>' in sold
+    assert "Bebidas / Aguas" not in sold
     assert "Agua" in page.split("<h2>Artículos disponibles para órdenes</h2>", 1)[1]
 
     store.save_order(author["id"], [line("Café", 4)], order["id"])
@@ -41,8 +44,8 @@ def test_sold_catalog_counts_units_and_tracks_order_changes(tmp_path):
     sold_updated = updated.split("<h2>Catálogo vendido de la jornada</h2>", 1)[1].split(
         "<h2>Artículos disponibles para órdenes</h2>", 1
     )[0]
-    assert sold_updated.index("Bebidas / Aguas / Café") < sold_updated.index(
-        "Bebidas / Aguas / Té"
+    assert sold_updated.index('data-label="Artículo">Café') < sold_updated.index(
+        'data-label="Artículo">Té'
     )
 
     store.delete_order(order["id"])
@@ -50,5 +53,5 @@ def test_sold_catalog_counts_units_and_tracks_order_changes(tmp_path):
     sold_after_delete = after_delete.split(
         "<h2>Catálogo vendido de la jornada</h2>", 1
     )[1].split("<h2>Artículos disponibles para órdenes</h2>", 1)[0]
-    assert "Bebidas / Aguas / Café" not in sold_after_delete
-    assert "Bebidas / Aguas / Té" in sold_after_delete
+    assert 'data-label="Artículo">Café' not in sold_after_delete
+    assert 'data-label="Artículo">Té' in sold_after_delete
