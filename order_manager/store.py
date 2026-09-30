@@ -31,8 +31,29 @@ def fresh_globals() -> dict:
         "revenue": 0,
         "by_category": {},
         "by_article": {},
+        "article_key_format": "escaped-v1",
         "closed_ids": [],
     }
+
+
+def article_statistics_key(parts: list[str]) -> str:
+    """Escapa cada campo para que sus barras no se confundan con separadores."""
+    return " / ".join(part.replace("\\", "\\\\").replace("/", "\\/") for part in parts)
+
+
+def migrate_article_statistics(data: dict) -> dict:
+    if data.get("article_key_format") == "escaped-v1":
+        return data
+    migrated = deepcopy(data)
+    articles = {}
+    for key, totals in migrated["by_article"].items():
+        parts = key.split(" / ")
+        # Un acumulado antiguo ambiguo no permite reconstruir sus artículos.
+        new_key = article_statistics_key(parts) if len(parts) == 3 else key
+        articles[new_key] = totals
+    migrated["by_article"] = articles
+    migrated["article_key_format"] = "escaped-v1"
+    return migrated
 
 
 def summary(journey: dict) -> dict:
@@ -65,7 +86,9 @@ def summary(journey: dict) -> dict:
             result["revenue"] += revenue
             if author:
                 author["units"] += qty
-            article_key = f'{line["category"]} / {line["subcategory"]} / {line["name"]}'
+            article_key = article_statistics_key([
+                line["category"], line["subcategory"], line["name"],
+            ])
             groups = (
                 (result["by_category"], line["category"]),
                 (result["by_article"], article_key),
@@ -86,12 +109,11 @@ class Store:
     def __init__(self, global_file: Path):
         self.lock = RLock()
         self.journey: dict | None = None
-        self.events: list[dict] = []
         self.last_export: tuple[str, bytes] | None = None
         self.global_file = global_file
         self.inventory_file = global_file.parent / "inventory.json"
         if global_file.exists():
-            self.globals = json.loads(global_file.read_text())
+            self.globals = migrate_article_statistics(json.loads(global_file.read_text()))
         else:
             self.globals = fresh_globals()
         if self.inventory_file.exists():
@@ -100,9 +122,13 @@ class Store:
             self.inventory = initial_inventory()
             self._write_inventory(self.inventory)
 
-    def _active(self) -> dict:
+    def _active(self, expected_id: str | None = None) -> dict:
         if self.journey is None:
             raise DomainError("No hay jornada activa.", 409)
+        if expected_id is not None and self.journey["id"] != expected_id:
+            raise DomainError(
+                "La jornada cambió. Revise la jornada actual antes de confirmar.", 409,
+            )
         return self.journey
 
     @staticmethod
@@ -115,11 +141,10 @@ class Store:
     def _event(self, action: str, detail: str) -> None:
         entry = {"at": now(), "action": action, "detail": detail}
         self._active()["events"].append(entry)
-        self.events.append(entry)
 
     def get_events(self) -> list[dict]:
         with self.lock:
-            return deepcopy(self.events)
+            return deepcopy(self.journey["events"]) if self.journey else []
 
     def get_journey(self) -> dict | None:
         with self.lock:
@@ -164,10 +189,12 @@ class Store:
                 }
         return list(temporary.values())
 
-    def get_last_export(self) -> tuple[str, bytes]:
+    def get_last_export(self, expected_id: str | None = None) -> tuple[str, bytes]:
         with self.lock:
             if self.last_export is None:
                 raise DomainError("Todavía no hay una jornada exportada.", 404)
+            if expected_id is not None and self.last_export[0] != expected_id:
+                raise DomainError("La exportación de esta jornada ya no está disponible.", 404)
             return self.last_export
 
     def create_journey(self, title: str) -> dict:
@@ -417,14 +444,28 @@ class Store:
                 temporary.unlink()
 
     def _write_globals(self, data: dict) -> None:
-        self._write_json(self.global_file, data, ".globals-")
+        try:
+            self._write_json(self.global_file, data, ".globals-")
+        except OSError as error:
+            raise DomainError(
+                "No se pudo guardar el cierre. La jornada sigue activa y sus datos "
+                "se conservan. Puede reintentar cuando se restablezca el almacenamiento.",
+                503,
+            ) from error
 
     def _write_inventory(self, data: dict) -> None:
-        self._write_json(self.inventory_file, data, ".inventory-")
+        try:
+            self._write_json(self.inventory_file, data, ".inventory-")
+        except OSError as error:
+            raise DomainError(
+                "No se pudo guardar el catálogo. No se aplicaron los cambios. "
+                "Puede reintentar cuando se restablezca el almacenamiento.",
+                503,
+            ) from error
 
-    def close_journey(self) -> bytes:
+    def close_journey(self, expected_id: str | None = None) -> bytes:
         with self.lock:
-            j = self._active()
+            j = self._active(expected_id)
             stats = summary(j)
             export = deepcopy(j)
             export["closed_at"] = now()
@@ -448,13 +489,12 @@ class Store:
                             entry[metric] += value[metric]
             self._write_globals(next_globals)
             self.globals = next_globals
-            self.events.append(export["events"][-1])
             self.last_export = (j["id"], payload)
             self.journey = None
             return payload
 
-    def discard_journey(self) -> None:
+    def discard_journey(self, expected_id: str | None = None) -> None:
         with self.lock:
-            title = self._active()["title"]
+            title = self._active(expected_id)["title"]
             self._event("journey_discarded", title)
             self.journey = None

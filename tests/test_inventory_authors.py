@@ -162,11 +162,11 @@ def test_failed_inventory_write_keeps_catalog_intact(tmp_path, monkeypatch):
     store.create_journey("Tarde")
     original = store.get_inventory()
 
-    def fail_write(_data):
+    def fail_write(*_args):
         raise OSError("disk full")
 
-    monkeypatch.setattr(store, "_write_inventory", fail_write)
-    with pytest.raises(OSError):
+    monkeypatch.setattr(store, "_write_json", fail_write)
+    with pytest.raises(DomainError, match="No se pudo guardar el catálogo"):
         store.add_article({
             "name": "Nuevo",
             "category": "Otros",

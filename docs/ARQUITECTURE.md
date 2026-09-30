@@ -32,6 +32,24 @@ desaparecen de las opciones al borrar o modificar su última orden. Si la
 jornada se cierra correctamente, permanecen en el JSON exportado y en los
 acumulados globales de ventas.
 
+## Formulario de órdenes
+
+Cada línea permite elegir «Del inventario» o «Nuevo producto» mediante radios.
+CSS muestra los campos del modo elegido sin recargar la página. El producto
+nuevo tiene nombre y precio propios; su categoría y subcategoría se seleccionan
+entre las existentes en el catálogo. CSS muestra únicamente el desplegable de
+subcategorías correspondiente a la categoría elegida.
+
+El servidor valida el modo y la relación entre categoría y subcategoría, y utiliza
+solo sus campos activos. Una selección previa del inventario no sustituye al
+producto nuevo ni le transfiere su precio. Los formularios se validan en el servidor
+para evitar que un campo oculto bloquee el envío. Agregar o quitar líneas conserva
+los datos del formulario; guardar una orden conserva su copia del precio usado.
+
+En móvil, las acciones finales se apilan y separan. «Guardar orden» ocupa el ancho
+disponible y tiene mayor tamaño que «Agregar artículo» (verde) y «Quitar artículo»
+(rojo); ambos mantienen una altura mínima de 44 px.
+
 ## Cierre y descarte
 
 «Cerrar y contabilizar ventas» prepara la exportación JSON, incorpora la jornada una sola vez a las estadísticas globales y luego permite limpiar sus datos temporales. Si falla la exportación o el guardado, la jornada permanece disponible para reintentar.

@@ -3,12 +3,30 @@
 from __future__ import annotations
 
 from html import escape
+import json
+import re
+from urllib.parse import urlencode
 
 from .store import DomainError, Store, summary
 
 
 def h(value: object) -> str:
     return escape(str(value), quote=True)
+
+
+def article_statistics_label(key: str) -> str:
+    parts = key.split(" / ")
+    if len(parts) != 3:
+        return key
+    names = [re.sub(r"\\([\\/])", r"\1", part) for part in parts]
+    return " / ".join(
+        json.dumps(name, ensure_ascii=False) if " / " in name else name
+        for name in names
+    )
+
+
+def export_url(journey_id: str) -> str:
+    return "/api/exports/last?" + urlencode({"journey_id": journey_id})
 
 
 def layout(title: str, content: str, head: str = "") -> str:
@@ -140,7 +158,7 @@ def _author_results(author: dict, orders: list[dict], stats: dict) -> str:
     )
     average = f"{stats['average']:.2f}"
     article_rows = "\n".join(
-        f'<tr><td>{h(name)}</td><td>{h(totals["units"])}</td>'
+        f'<tr><td>{h(article_statistics_label(name))}</td><td>{h(totals["units"])}</td>'
         f'<td>{h(totals["revenue"])}</td></tr>'
         for name, totals in sorted(
             stats["by_article"].items(),
@@ -281,49 +299,104 @@ def _catalog_options(catalog: list[dict], selected_id: str) -> str:
     return "\n".join(options)
 
 
-def _order_line(index: int, row: dict, catalog: list[dict]) -> str:
+def _new_article_fields(index: int, row: dict, inventory: dict) -> str:
+    category_options = []
+    subcategory_fields = []
+    for position, category in enumerate(inventory["categories"]):
+        selected = " selected" if row.get("category") == category["name"] else ""
+        category_options.append(
+            f'<option value="{h(category["name"])}"{selected}>'
+            f'{h(category["name"])}</option>'
+        )
+        current = row.get("subcategories", {}).get(str(position), "")
+        if not current and selected:
+            current = row.get("subcategory", "")
+        options = []
+        for subcategory in inventory["subcategories"]:
+            if subcategory["category_id"] != category["id"]:
+                continue
+            checked = " selected" if current == subcategory["name"] else ""
+            options.append(
+                f'<option value="{h(subcategory["name"])}"{checked}>'
+                f'{h(subcategory["name"])}</option>'
+            )
+        subcategory_fields.append(f"""<label class="subcategory-choice subcategory-{position}">
+            Subcategoría
+            <select name="subcategory_{index}_{position}">
+                <option value="">Seleccionar subcategoría</option>
+                {''.join(options)}
+            </select>
+        </label>""")
+    price = row.get("new_unit_price", row.get("unit_price", "") if row.get("name") else "")
+    return f"""<div class="new-article-fields">
+        <label>Nombre
+            <input name="name_{index}" value="{h(row.get('name', ''))}">
+        </label>
+        <label>Categoría
+            <select class="category-select" name="category_{index}">
+                <option value="">Seleccionar categoría</option>
+                {''.join(category_options)}
+            </select>
+        </label>
+        {''.join(subcategory_fields)}
+        <label>Precio unitario del producto nuevo
+            <input name="new_unit_price_{index}" type="number" min="0" step="1"
+                   value="{h(price)}">
+        </label>
+    </div>"""
+
+
+def _subcategory_styles(inventory: dict) -> str:
+    rules = "\n".join(
+        f'.new-article-fields:has(.category-select option:nth-child({position + 2}):checked) '
+        f'.subcategory-{position} {{ display: block; }}'
+        for position in range(len(inventory["categories"]))
+    )
+    return f"<style>\n{rules}\n</style>"
+
+
+def _order_line(index: int, row: dict, catalog: list[dict], inventory: dict) -> str:
     def value(key: str) -> str:
         return h(row.get(key, ""))
 
     catalog_options = _catalog_options(catalog, row.get("catalog_id", ""))
     quantity = value("quantity") or "1"
-    custom_open = " open" if row.get("name") and not row.get("catalog_id") else ""
-    return f"""<fieldset>
+    source = row.get("source", "new" if row.get("name") else "inventory")
+    inventory_checked = " checked" if source == "inventory" else ""
+    new_checked = " checked" if source == "new" else ""
+    inventory_price = value("unit_price") if source == "inventory" or "source" in row else ""
+    return f"""<fieldset class="order-line">
         <legend>Artículo {index + 1}</legend>
-        <label>Elegir del inventario
-            <select name="catalog_id_{index}">
-                <option value="">Seleccionar artículo o agregar uno nuevo</option>
-                {catalog_options}
-            </select>
+        <label>Cantidad
+            <input name="quantity_{index}" type="number" min="1" step="1"
+                   value="{quantity}" required>
         </label>
-        <div class="grid">
-            <label>Cantidad
-                <input name="quantity_{index}" type="number" min="1" step="1"
-                       value="{quantity}" required>
-            </label>
-            <label>Precio unitario si falta en el inventario
-                <input name="unit_price_{index}" type="number" min="0" step="1"
-                       value="{value('unit_price')}">
-            </label>
-        </div>
-        <details{custom_open}>
-            <summary>Agregar un artículo nuevo a esta orden</summary>
-            <p>Completa estos datos cuando no selecciones un artículo del inventario.</p>
-            <div class="grid">
-            <label>Nombre
-                <input name="name_{index}" value="{value('name')}">
-            </label>
-            <label>Categoría
-                <input name="category_{index}" value="{value('category')}">
-            </label>
-            <label>Subcategoría
-                <input name="subcategory_{index}" value="{value('subcategory')}">
-            </label>
+        <div class="article-source">
+            <input id="inventory_{index}" name="source_{index}" type="radio"
+                   value="inventory"{inventory_checked}>
+            <label for="inventory_{index}">Del inventario</label>
+            <input id="new_{index}" name="source_{index}" type="radio"
+                   value="new"{new_checked}>
+            <label for="new_{index}">Nuevo producto</label>
+            <div class="inventory-fields">
+                <label>Elegir del inventario
+                    <select name="catalog_id_{index}">
+                        <option value="">Seleccionar artículo</option>
+                        {catalog_options}
+                    </select>
+                </label>
+                <label>Precio unitario si falta en el inventario
+                    <input name="unit_price_{index}" type="number" min="0" step="1"
+                           value="{inventory_price}">
+                </label>
             </div>
-        </details>
-        <button class="danger" name="action" value="remove_{index}">
-            Quitar artículo
-        </button>
+            {_new_article_fields(index, row, inventory)}
+        </div>
+        <div class="order-line-actions">
+            <button class="danger order-secondary" name="action" value="remove_{index}">
+                Quitar artículo
+            </button>
+        </div>
     </fieldset>"""
 
 
@@ -382,8 +455,9 @@ def orders_page(
         for author in journey["authors"]
     )
     available_articles = store.get_available_articles()
+    inventory = store.get_inventory()
     line_cards = "\n".join(
-        _order_line(index, row, available_articles)
+        _order_line(index, row, available_articles, inventory)
         for index, row in enumerate(rows)
     )
     author_names = {
@@ -424,7 +498,7 @@ def orders_page(
         <p>Selecciona artículos del inventario y agrega varias líneas, por ejemplo
            Café × 3. Completa el precio cuando el artículo no lo tenga definido.
            El total se calcula al guardar.</p>
-        <form method="post" action="/ui/orders/form">
+        <form method="post" action="/ui/orders/form" novalidate>
             <input type="hidden" name="count" value="{len(rows)}">
             <input type="hidden" name="order_id" value="{h(edit_id)}">
             <label>Autor
@@ -434,13 +508,15 @@ def orders_page(
                 </select>
             </label>
             {line_cards}
-            <div class="actions">
-                <button class="quiet" name="action" value="add">Agregar artículo</button>
-                <button name="action" value="save">Guardar orden</button>
+            <div class="actions order-actions">
+                <button class="add-article order-secondary" name="action" value="add">
+                    Agregar artículo
+                </button>
+                <button class="save-order" name="action" value="save">Guardar orden</button>
             </div>
         </form>
     </section>"""
-    return layout("Órdenes", alert(error) + body)
+    return layout("Órdenes", alert(error) + body, _subcategory_styles(inventory))
 
 
 def _article_row(article: dict) -> str:
@@ -476,7 +552,12 @@ def _temporary_article_row(article: dict) -> str:
     </tr>"""
 
 
-def articles_page(store: Store, edit_id: str = "", error: str = "") -> str:
+def articles_page(
+    store: Store,
+    edit_id: str = "",
+    error: str = "",
+    values: dict | None = None,
+) -> str:
     journey = store.get_journey()
     if not journey:
         message = '<p>Primero <a href="/jornada">crea una jornada</a>.</p>'
@@ -486,9 +567,12 @@ def articles_page(store: Store, edit_id: str = "", error: str = "") -> str:
         (article for article in journey["articles"] if article["id"] == edit_id),
         {},
     )
+    form_title = "Editar artículo" if current else "Agregar artículo"
+    if values is not None:
+        current = values
     sold_articles = summary(journey)["by_article"]
     sold_rows = "\n".join(
-        f"<tr><td>{h(name)}</td><td>{h(totals['units'])}</td>"
+        f"<tr><td>{h(article_statistics_label(name))}</td><td>{h(totals['units'])}</td>"
         f"<td>{h(totals['revenue'])}</td></tr>"
         for name, totals in sorted(
             sold_articles.items(),
@@ -510,7 +594,6 @@ def articles_page(store: Store, edit_id: str = "", error: str = "") -> str:
         available_rows = "\n".join((available_rows, temporary_rows))
     if not available_rows:
         available_rows = '<tr><td colspan="5">Sin artículos disponibles.</td></tr>'
-    form_title = "Editar artículo" if current else "Agregar artículo"
 
     body = f"""<section class="panel">
         <h2>Catálogo vendido de la jornada</h2>
@@ -577,9 +660,9 @@ def events_page(store: Store) -> str:
     if not rows:
         rows = '<tr><td colspan="3">Sin movimientos.</td></tr>'
     try:
-        store.get_last_export()
+        journey_id, _payload = store.get_last_export()
         download = (
-            '<p><a class="button" href="/api/exports/last">'
+            f'<p><a class="button" href="{h(export_url(journey_id))}">'
             'Descargar último JSON exportado</a></p>'
         )
     except DomainError:
@@ -593,8 +676,8 @@ def events_page(store: Store) -> str:
                 <tbody>{rows}</tbody>
             </table>
         </div>
-        <p>Los registros de la jornada se incluyen en la exportación JSON al cerrarla.
-           La lista visible se pierde al reiniciar la aplicación.</p>
+        <p>Esta lista muestra únicamente la jornada activa. Sus registros se incluyen
+           en la exportación JSON al cerrarla.</p>
         {download}
     </section>"""
     return layout("Registros y exportación", body)
@@ -628,6 +711,7 @@ def confirm_page(store: Store, action: str) -> str:
         <form method="post" action="/ui/journey">
             <input type="hidden" name="action" value="{action}">
             <input type="hidden" name="confirm" value="yes">
+            <input type="hidden" name="journey_id" value="{h(journey['id'])}">
             <button class="{button_class}" type="submit">{h(button_label)}</button>
             <a class="button quiet" href="/jornada">Cancelar</a>
         </form>
@@ -635,12 +719,13 @@ def confirm_page(store: Store, action: str) -> str:
     return layout(title, body)
 
 
-def closed_journey_page() -> str:
-    body = """<section class="panel">
+def closed_journey_page(journey_id: str) -> str:
+    download = h(export_url(journey_id))
+    body = f"""<section class="panel">
         <p>La jornada se cerró y sus ventas se contabilizaron.</p>
         <p>La descarga del JSON comenzará automáticamente.</p>
-        <p>Si no comienza, <a href="/api/exports/last">descargar JSON</a>.</p>
-        <iframe src="/api/exports/last" title="Descarga de la jornada" hidden></iframe>
+        <p>Si no comienza, <a href="{download}">descargar JSON</a>.</p>
+        <iframe src="{download}" title="Descarga de la jornada" hidden></iframe>
     </section>"""
     refresh = '<meta http-equiv="refresh" content="2;url=/">'
     return layout("Jornada cerrada", body, refresh)
