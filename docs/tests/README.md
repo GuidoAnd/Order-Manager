@@ -35,15 +35,11 @@ los avances de la versión actual.
 - [Radios en órdenes](v0_2/ORDER_RADIOS_20260930T021846Z.md).
 - [Búsqueda de artículos y fichas](v0_2/ARTICLE_BROWSER_20260930T032213Z.md).
 - [Ajustes adaptables de Artículos](v0_2/ARTICLES_RESPONSIVE_20260930T043731Z.md).
-
 - [Corrección de listas repetidas](v0_2/ARTICLE_LIST_VISIBILITY_20260930T045405Z.md).
 
 Las pruebas de navegador documentadas usan Chromium emulado; sus resultados no
 constituyen validación en dispositivos físicos o en otros motores.
 
-## Nuevos informes
+## Auditorías
 
-Guardar cada informe en el directorio de la versión evaluada, incluir timestamp
-UTC y describir brevemente alcance, resultado y limitaciones. Actualizar este índice
-cuando cambie el resultado más reciente. Las auditorías se consultan por separado
-en [docs/audits](../audits/).
+Los resultados de las auditorías están en [docs/audits](../audits/).
