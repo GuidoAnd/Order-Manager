@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 from urllib.parse import parse_qs
 
 from fastapi import FastAPI, Query, Request
@@ -14,7 +15,7 @@ from fastapi.responses import (
 )
 from pydantic import BaseModel, Field
 
-from . import web
+from . import journey_results, web
 from .article_search import ArticleSearch
 from .store import DomainError, Store
 
@@ -51,6 +52,7 @@ class LineInput(BaseModel):
 
 class OrderInput(BaseModel):
     author_id: str
+    status: Literal["sale", "not_billed"] = "sale"
     lines: list[LineInput] = Field(min_length=1, max_length=50)
 
 
@@ -203,12 +205,14 @@ def make_app(global_file: Path | None = None) -> FastAPI:
 
     @app.post("/api/orders", status_code=201)
     def create_order(data: OrderInput):
-        return store.save_order(data.author_id, [line.model_dump() for line in data.lines])
+        return store.save_order(
+            data.author_id, [line.model_dump() for line in data.lines], status=data.status,
+        )
 
     @app.put("/api/orders/{order_id}")
     def update_order(order_id: str, data: OrderInput):
         lines = [line.model_dump() for line in data.lines]
-        return store.save_order(data.author_id, lines, order_id)
+        return store.save_order(data.author_id, lines, order_id, status=data.status)
 
     @app.delete("/api/orders/{order_id}", status_code=204)
     def delete_order(order_id: str):
@@ -236,8 +240,14 @@ def make_app(global_file: Path | None = None) -> FastAPI:
         return web.dashboard(store)
 
     @app.get("/jornada", response_class=HTMLResponse)
-    def journey_page():
-        return web.journey_page(store)
+    def journey_page(request: Request):
+        pages = web.journey_article_pages(dict(request.query_params))
+        values = dict(request.query_params)
+        return web.journey_page(
+            store, article_pages=pages,
+            order_pages=journey_results.page_values(values, "orders"),
+            subtotal_pages=journey_results.page_values(values, "subtotals"),
+        )
 
     @app.get("/ordenes", response_class=HTMLResponse)
     def orders_page(
@@ -248,14 +258,14 @@ def make_app(global_file: Path | None = None) -> FastAPI:
     @app.get("/articulos", response_class=HTMLResponse)
     def articles_page(
         edit: str = "", q: str = "", category: str = "", subcategory: str = "",
-        page: int = Query(default=1, ge=1),
+        page: int = Query(default=1, ge=1), sold_page: int = Query(default=1, ge=1),
     ):
-        search = ArticleSearch(q, category, subcategory, page)
+        search = ArticleSearch(q, category, subcategory, page, sold_page)
         return web.articles_page(store, edit_id=edit, search=search)
 
     @app.get("/registros", response_class=HTMLResponse)
-    def events_page():
-        return web.events_page(store)
+    def events_page(page: int = Query(default=1, ge=1)):
+        return web.events_page(store, page=page)
 
     @app.get("/confirmar/{action}", response_class=HTMLResponse)
     def confirm_page(action: str):
@@ -404,6 +414,7 @@ def make_app(global_file: Path | None = None) -> FastAPI:
                     values.get("author_id", ""),
                     order_form_lines(rows, inventory),
                     values.get("order_id") or None,
+                    status=values.get("order_status", "sale"),
                 )
                 return RedirectResponse(web.orders_url(**state) + "#order-results", status_code=303)
             else:
@@ -413,6 +424,7 @@ def make_app(global_file: Path | None = None) -> FastAPI:
                 rows,
                 values.get("author_id", ""),
                 values.get("order_id", ""),
+                order_status=values.get("order_status", "sale"),
                 **state,
             )
             return HTMLResponse(page)
@@ -425,6 +437,7 @@ def make_app(global_file: Path | None = None) -> FastAPI:
                     author_id=values.get("author_id", ""),
                     edit_id=values.get("order_id", ""),
                     error=str(error),
+                    order_status=values.get("order_status", "sale"),
                     **state,
                 ),
                 status_code=status,

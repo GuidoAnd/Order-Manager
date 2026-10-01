@@ -50,20 +50,42 @@ En móvil, las acciones finales se apilan y separan. «Guardar orden» ocupa el 
 disponible y tiene mayor tamaño que «Agregar artículo» (verde) y «Quitar artículo»
 (rojo); ambos mantienen una altura mínima de 44 px.
 
+## Órdenes no facturadas
+
+El tipo de orden se selecciona mediante radios «Venta» y «No facturada
+(regalo/cancelada)», independiente del origen de cada artículo. La segunda
+requiere al menos un artículo y cantidades positivas; oculta los precios y
+no aplica los del catálogo. El servidor guarda precios, subtotales y total
+como nulos. Las ventas conservan la validación de precios obligatorios.
+
+Las no facturadas aparecen etiquetadas y sin importe en Órdenes y Jornada,
+conservan autor, ID, número y artículos, y generan un registro identificable.
+El JSON mantiene `status: "not_billed"` y sus líneas. Los resúmenes de ventas,
+promedios, catálogo vendido y subtotales por bloques excluyen estas órdenes.
+Los artículos que aparezcan solo en ellas no se incorporan como temporales
+reutilizables. Cambiar el tipo conserva el ID/número y recalcula los resultados;
+convertirla en venta requiere precios válidos.
+
 ## Consulta de órdenes
 
-El listado mantiene la agrupación por autor y limita el total de órdenes visibles
-por página: 2 hasta 374 px, 3 hasta 650 px, 4 hasta 1023 px y 5 desde 1024 px.
-Anterior y Siguiente recorren las órdenes ordenadas por número. Solo se muestran
-los autores con órdenes en la página actual. Las reglas de visibilidad se incluyen
-en el HTML para mantener una sola vista incluso con una hoja externa antigua.
+El listado usa una página compartida y mantiene la agrupación por autor.
+El tamaño base es 2 hasta 374 px, 3 hasta 650 px, 4 hasta 1023 px y 5 desde
+1024 px. Cada página reserva la primera orden pendiente de cada autor y
+completa los lugares restantes por número. Si hay más autores pendientes
+que lugares, amplía la página para incluir una orden de cada uno.
+Anterior y Siguiente recorren todas las órdenes sin duplicarlas.
 
-La búsqueda admite el número exacto (90 o #90) o parte del nombre del autor,
-sin distinguir mayúsculas ni acentos. Una búsqueda nueva comienza en la primera
-página. El filtro por artículo se combina con la búsqueda y ambos se conservan
-al paginar, editar, agregar/quitar líneas, guardar o eliminar. Una página que
-queda fuera del rango disponible se ajusta a la última página válida.
-Los filtros afectan la consulta, no los totales ni los datos de las órdenes.
+La búsqueda muestra cinco resultados por página en todos los anchos. Admite
+parte del nombre del autor, incluidos nombres numéricos, sin distinguir
+mayúsculas ni acentos. Una consulta numérica como 90 también coincide con
+la orden de ese número; #90 busca exclusivamente esa orden. Cada orden aparece
+una sola vez aunque coincida por ambos criterios.
+
+Una búsqueda nueva comienza en la primera página. El filtro por artículo se
+combina con la búsqueda y ambos se conservan al paginar, editar, agregar/quitar
+líneas, guardar o eliminar. Las páginas fuera de rango se ajustan a la última
+válida. «Acciones» despliega Editar y Eliminar, con colores diferentes.
+Los filtros y la paginación no cambian las órdenes ni sus totales.
 
 ## Consulta y administración de artículos
 
@@ -76,6 +98,11 @@ externa antigua no muestre las cuatro vistas. La URL del CSS incluye un hash de
 su contenido y cambia al actualizar los estilos. Cada vista permite recorrer
 todos los resultados. La búsqueda no distingue mayúsculas ni acentos; sus filtros
 se conservan al cambiar de página, editar, guardar o eliminar un artículo del catálogo.
+
+El catálogo vendido se pagina de 2 a 5 filas según el ancho, con
+Anterior/Siguiente y fichas en móvil. Su página es independiente de los artículos
+disponibles; conserva la búsqueda, filtros y página de ese listado al navegar,
+y sus formularios conservan la página del catálogo vendido.
 
 El catálogo vendido muestra nombre, unidades vendidas e importe; la categoría y
 subcategoría se conservan en los datos para distinguir productos y contabilizar
@@ -96,6 +123,30 @@ Hasta 650 px, las tablas de Artículos y el listado de Órdenes se presentan com
 verticales con etiquetas. Sus datos y acciones caben sin desplazamiento lateral.
 En tamaños mayores conservan la presentación de tabla. Los textos largos pueden
 partirse y los campos y columnas flexibles se ajustan al ancho disponible.
+
+## Tablas por autor en Jornada
+
+Cada autor muestra tres tablas: órdenes, subtotales y artículos facturados.
+Cada tabla tiene páginas independientes con Anterior/Siguiente y conserva las
+páginas de las demás al navegar. Muestra 2 filas hasta 374 px, 3 hasta 650 px,
+4 hasta 1023 px y 5 desde 1024 px. Hasta 650 px se presenta como fichas con las
+mismas etiquetas; en anchos mayores mantiene la tabla. No requiere desplazamiento
+lateral en móvil. Los nombres largos se parten dentro del espacio disponible.
+
+Las órdenes se recorren por número y conservan el acumulado del autor desde
+su primera orden, aunque la página actual comience más adelante.
+Los artículos se ordenan por unidades vendidas y nombre.
+
+La tabla intermedia agrupa hasta diez órdenes facturadas consecutivas de ese autor,
+incluido el último bloque incompleto. Cada fila muestra número de bloque,
+cantidad de órdenes y subtotal. «Ver órdenes» despliega los números reales,
+por ejemplo #1, #2 y #5. El bloque identifica una agrupación, no un rango de
+números generales de jornada. Sus subtotales se recalculan al modificar o
+eliminar órdenes.
+
+Las páginas inválidas o fuera de rango se acotan. Un autor sin órdenes muestra
+los estados vacíos. La consulta conserva los datos, importes, unidades,
+promedios y acumulados completos.
 
 ## Nombre de la jornada
 
@@ -118,9 +169,37 @@ o duplicados se rechazan. Eliminar mantiene la protección existente para autore
 con órdenes y no valida el campo de renombrado. Cancelar vuelve a Jornada sin
 guardar. Los errores conservan el texto y reabren el formulario correspondiente.
 
+## Navegación y acciones de artículos
+
+Hasta 1023 px, la cabecera muestra «Menú», un desplegable con acceso a las cinco
+secciones. Comienza cerrado al cargar cada página y se puede abrir o cerrar con
+teclado o toque. Desde 1024 px, los enlaces permanecen visibles en la cabecera.
+Ambas presentaciones se generan a partir de una misma lista de secciones; CSS
+muestra solo la correspondiente al ancho disponible.
+
+En los artículos del inventario, «Acciones» despliega Editar y Eliminar, con
+colores distintos y controles de al menos 44 px. La búsqueda, filtros y página
+se conservan al realizar esas acciones. Los artículos temporales mantienen
+«Ver órdenes que lo usan» y se administran desde sus órdenes.
+
+## Registros
+
+Los movimientos de la jornada activa se muestran del más reciente al más antiguo,
+con 2 a 5 filas por página según el ancho y Anterior/Siguiente. En móvil se presentan
+como fichas con Fecha, Acción y Detalle. La paginación no añade eventos ni modifica
+su contenido; la exportación incluye todos los registros de la jornada.
+El acceso al último JSON permanece separado del listado paginado.
+
 ## Cierre y descarte
 
 «Cerrar y contabilizar ventas» prepara la exportación JSON, incorpora la jornada una sola vez a las estadísticas globales y luego permite limpiar sus datos temporales. Si falla la exportación o el guardado, la jornada permanece disponible para reintentar.
+
+El JSON contiene metadatos, autores, órdenes, estadísticas y eventos de la jornada,
+además de `new_articles` y `price_changes`. Excluye la copia del inventario inicial
+y el contador interno. Cada línea de venta conserva su cantidad, precio y subtotal;
+los cambios posteriores de catálogo no modifican esos valores. La actividad de
+altas y precios se registra en memoria tras confirmar el guardado y se conserva
+si el cierre falla. El [formato de descarga](versions/v0_2.md) detalla los campos.
 
 Tras confirmar el cierre en la interfaz, una página transitoria solicita la descarga de la última exportación y redirige al Dashboard. También ofrece un enlace para repetir la descarga durante la misma ejecución.
 

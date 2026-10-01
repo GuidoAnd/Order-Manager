@@ -10,6 +10,8 @@ from tempfile import NamedTemporaryFile
 from threading import RLock
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
+from .article_search import article_identity
+from .journey_export import build_export
 from .seed_inventory import initial_inventory
 
 
@@ -56,8 +58,12 @@ def migrate_article_statistics(data: dict) -> dict:
     return migrated
 
 
+def is_sale(order: dict) -> bool:
+    return order.get("status", "sale") == "sale"
+
+
 def summary(journey: dict) -> dict:
-    orders = journey["orders"]
+    orders = [order for order in journey["orders"] if is_sale(order)]
     result = {
         "orders": len(orders),
         "units": 0,
@@ -110,6 +116,9 @@ class Store:
         self.lock = RLock()
         self.journey: dict | None = None
         self.last_export: tuple[str, bytes] | None = None
+        self._new_catalog_articles: dict[str, dict] = {}
+        self._price_changes: list[dict] = []
+        self._journey_catalog_keys: set[tuple[str, str, str]] = set()
         self.global_file = global_file
         self.inventory_file = global_file.parent / "inventory.json"
         if global_file.exists():
@@ -174,6 +183,8 @@ class Store:
         catalog_keys = {article_key(article) for article in journey["articles"]}
         temporary = {}
         for order in journey["orders"]:
+            if not is_sale(order):
+                continue
             for line in order["lines"]:
                 key = article_key(line)
                 if key in catalog_keys:
@@ -213,6 +224,11 @@ class Store:
                 "orders": [],
                 "events": [],
                 "next_order": 1,
+            }
+            self._new_catalog_articles = {}
+            self._price_changes = []
+            self._journey_catalog_keys = {
+                article_identity(article) for article in self.journey["articles"]
             }
             self._event("journey_created", title)
             return deepcopy(self.journey)
@@ -272,6 +288,10 @@ class Store:
             self._write_inventory(inventory)
             self.inventory = inventory
             journey["articles"].append(item)
+            self._new_catalog_articles[item["id"]] = {
+                **deepcopy(item), "temporary": False, "deleted": False,
+            }
+            self._journey_catalog_keys.add(article_identity(item))
             self._event("article_created", item["name"])
             return deepcopy(item)
 
@@ -321,6 +341,7 @@ class Store:
             journey = self._active()
             item = self._find(journey["articles"], article_id, "Artículo")
             updated = self._article_data(data, allow_empty_price=True)
+            previous_price = item["unit_price"]
             inventory = deepcopy(self.inventory)
             stored = self._find(inventory["articles"], article_id, "Artículo")
             stored.update(updated)
@@ -328,6 +349,16 @@ class Store:
             self._write_inventory(inventory)
             self.inventory = inventory
             item.update(updated)
+            self._journey_catalog_keys.add(article_identity(item))
+            if article_id in self._new_catalog_articles:
+                self._new_catalog_articles[article_id].update(deepcopy(item))
+            if previous_price != item["unit_price"]:
+                self._price_changes.append({
+                    "at": now(), "article_id": article_id,
+                    "name": item["name"], "category": item["category"],
+                    "subcategory": item["subcategory"],
+                    "previous_price": previous_price, "new_price": item["unit_price"],
+                })
             self._event("article_updated", item["name"])
             return deepcopy(item)
 
@@ -341,9 +372,11 @@ class Store:
             self._write_inventory(inventory)
             self.inventory = inventory
             j["articles"].remove(item)
+            if article_id in self._new_catalog_articles:
+                self._new_catalog_articles[article_id]["deleted"] = True
             self._event("article_deleted", item["name"])
 
-    def _lines(self, lines: list[dict]) -> list[dict]:
+    def _lines(self, lines: list[dict], not_billed: bool = False) -> list[dict]:
         if not lines:
             raise DomainError("La orden necesita al menos un artículo.")
         if len(lines) > 50:
@@ -364,34 +397,46 @@ class Store:
                     key: article[key]
                     for key in ("name", "category", "subcategory", "unit_price")
                 }
-                if data["unit_price"] is None:
+                if not_billed:
+                    data["unit_price"] = None
+                elif data["unit_price"] is None:
                     data = self._article_data({
                         **data,
                         "unit_price": row.get("unit_price"),
                     })
             else:
-                data = self._article_data(row)
+                data = self._article_data(
+                    {**row, "unit_price": None} if not_billed else row,
+                    allow_empty_price=not_billed,
+                )
             output.append({
                 **data,
                 "quantity": quantity,
-                "subtotal": quantity * data["unit_price"],
+                "subtotal": None if not_billed else quantity * data["unit_price"],
             })
         return output
 
-    def save_order(self, author_id: str, lines: list[dict], order_id: str | None = None) -> dict:
+    def save_order(
+        self, author_id: str, lines: list[dict], order_id: str | None = None,
+        status: str = "sale",
+    ) -> dict:
         with self.lock:
             j = self._active()
+            if status not in {"sale", "not_billed"}:
+                raise DomainError("Estado de la orden inválido.")
             self._find(j["authors"], author_id, "Autor")
             existing_order = (
                 self._find(j["orders"], order_id, "Orden") if order_id else None
             )
-            normalized = self._lines(lines)
+            normalized = self._lines(lines, not_billed=status == "not_billed")
+            total = None if status == "not_billed" else sum(row["subtotal"] for row in normalized)
             if existing_order:
                 order = existing_order
                 order.update({
                     "author_id": author_id,
                     "lines": normalized,
-                    "total": sum(row["subtotal"] for row in normalized),
+                    "total": total,
+                    "status": status,
                     "updated_at": now(),
                 })
                 action = "order_updated"
@@ -401,13 +446,24 @@ class Store:
                     "number": j["next_order"],
                     "author_id": author_id,
                     "lines": normalized,
-                    "total": sum(row["subtotal"] for row in normalized),
+                    "total": total,
+                    "status": status,
                     "created_at": now(),
                 }
                 j["next_order"] += 1
                 j["orders"].append(order)
                 action = "order_created"
-            self._event(action, f'Orden {order["number"]}')
+            if status == "not_billed":
+                articles = ", ".join(
+                    f'{line["name"]} × {line["quantity"]}' for line in normalized
+                )
+                self._event(
+                    "order_not_billed",
+                    f'Orden #{order["number"]} · ID {order["id"]} · '
+                    f'No facturada (regalo/cancelada), sin importe · {articles}',
+                )
+            else:
+                self._event(action, f'Orden {order["number"]}')
             return deepcopy(order)
 
     def delete_order(self, order_id: str) -> None:
@@ -467,14 +523,12 @@ class Store:
         with self.lock:
             j = self._active(expected_id)
             stats = summary(j)
-            export = deepcopy(j)
-            export["closed_at"] = now()
-            export["statistics"] = stats
-            export["events"].append({
-                "at": export["closed_at"],
-                "action": "journey_closed",
-                "detail": j["title"],
-            })
+            new_articles = list(self._new_catalog_articles.values()) + [
+                {**article, "deleted": False}
+                for article in self._temporary_articles(j)
+                if article_identity(article) not in self._journey_catalog_keys
+            ]
+            export = build_export(j, stats, new_articles, self._price_changes, now())
             payload = json.dumps(export, ensure_ascii=False, indent=2).encode("utf-8")
             next_globals = deepcopy(self.globals)
             if j["id"] not in next_globals["closed_ids"]:
@@ -491,6 +545,7 @@ class Store:
             self.globals = next_globals
             self.last_export = (j["id"], payload)
             self.journey = None
+            self._clear_article_activity()
             return payload
 
     def discard_journey(self, expected_id: str | None = None) -> None:
@@ -498,3 +553,9 @@ class Store:
             title = self._active(expected_id)["title"]
             self._event("journey_discarded", title)
             self.journey = None
+            self._clear_article_activity()
+
+    def _clear_article_activity(self) -> None:
+        self._new_catalog_articles = {}
+        self._price_changes = []
+        self._journey_catalog_keys = set()

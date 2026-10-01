@@ -1,6 +1,6 @@
 # Resultados de pruebas por versión
 
-Actualizado: **2026-10-01T04:20:31Z** (UTC).
+Actualizado: **2026-10-01T18:10:54Z** (UTC).
 
 Los informes se agrupan según la versión evaluada. Cada archivo conserva su
 fecha UTC, alcance y resultado PASS/FAIL. Son registros históricos: sus cantidades
@@ -9,7 +9,7 @@ no se suman ni implican que una versión en desarrollo esté terminada.
 | Versión | Directorio | Resumen de resultados |
 | --- | --- | --- |
 | v0.1 | [v0_1/](v0_1/) | Revisión final PASS: 22 pruebas funcionales e integrales de jornadas, autores, órdenes, artículos, estadísticas y cierre JSON. |
-| v0.2, en desarrollo | [v0_2/](v0_2/) | Última ejecución PASS: 96 pruebas, incluidas 30 de navegador desde 320 px. Cubre el flujo completo, los editores desplegables y la paginación y búsqueda de artículos y órdenes. |
+| v0.2, en desarrollo | [v0_2/](v0_2/) | Última ejecución PASS: 184 pruebas, incluidas 60 de navegador desde 320 px. Cubre el flujo completo, el menú adaptable, las acciones de artículos, los editores desplegables, la búsqueda y la paginación de artículos y órdenes, y las tablas de Jornada con subtotales, números reales y distribución compartida por autor. Incluye catálogo vendido y Registros paginados, y el nuevo formato JSON con altas, cambios de precio y ventas. Valida órdenes no facturadas para regalos/cancelaciones y su exclusión contable. |
 
 ## v0.1
 
@@ -41,6 +41,18 @@ los avances de la versión actual.
 - [Formularios de autores](v0_2/AUTHOR_EDITORS_20261001T035928Z.md).
 
 - [Paginación y búsqueda de órdenes](v0_2/ORDER_BROWSER_20261001T042031Z.md).
+
+- [Artículos por autor en Jornada](v0_2/AUTHOR_ARTICLE_PAGES_20261001T045202Z.md).
+
+- [Navegación y acciones de artículos](v0_2/NAVIGATION_ARTICLE_ACTIONS_20261001T142211Z.md).
+
+- [Jornada, subtotales y órdenes compartidas](v0_2/JOURNEY_SUBTOTALS_SHARED_ORDERS_20261001T163646Z.md).
+
+- [Formato JSON de jornada](v0_2/JOURNEY_JSON_FORMAT_20261001T172405Z.md).
+
+- [Catálogo vendido y Registros](v0_2/SOLD_CATALOG_RECORDS_PAGES_20261001T172405Z.md).
+
+- [Órdenes no facturadas](v0_2/NOT_BILLED_ORDERS_20261001T181054Z.md).
 
 Las pruebas de navegador documentadas usan Chromium emulado; sus resultados no
 constituyen validación en dispositivos físicos o en otros motores.

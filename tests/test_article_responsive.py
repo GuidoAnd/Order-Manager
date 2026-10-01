@@ -91,7 +91,7 @@ async def check_article_list(tmp_path, viewport, stylesheet_state):
             await page.get_by_role("button", name="Buscar", exact=True).click()
             assert await views.count() == 1
             assert await rows.count() == min(3, size)
-            assert "3 resultados" in await page.get_by_role("status").inner_text()
+            assert "3 resultados" in await page.locator("#available-articles").get_by_role("status").inner_text()
         finally:
             await browser.close()
 

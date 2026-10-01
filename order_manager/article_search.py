@@ -25,6 +25,7 @@ class ArticleSearch:
     category: str = ""
     subcategory: str = ""
     page: int = 1
+    sold_page: int = 1
 
     @classmethod
     def from_form(cls, values: dict):
@@ -32,9 +33,13 @@ class ArticleSearch:
             page = max(1, int(values.get("page", "1")))
         except ValueError:
             page = 1
+        try:
+            sold_page = max(1, int(values.get("sold_page", "1")))
+        except ValueError:
+            sold_page = 1
         return cls(
             values.get("q", ""), values.get("filter_category", ""),
-            values.get("filter_subcategory", ""), page,
+            values.get("filter_subcategory", ""), page, sold_page,
         )
 
     def fields(self, *, post: bool = False, page: int | None = None) -> dict:
@@ -43,6 +48,7 @@ class ArticleSearch:
             "filter_category" if post else "category": self.category,
             "filter_subcategory" if post else "subcategory": self.subcategory,
             "page": self.page if page is None else page,
+            "sold_page": self.sold_page,
         }
 
     def url(self, *, page: int | None = None) -> str:

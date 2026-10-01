@@ -61,10 +61,13 @@ def test_search_exact_number_author_accents_and_empty_results(tmp_path):
     app = make_app(tmp_path / "globals.json")
     authors, _ = populate(app, 190)
     app.state.store.rename_author(authors[1]["id"], "Bea 90")
-    for query in ["90", "#90", " 90 "]:
+    for query in ["#90", " #90 "]:
         _, _, html = request(app, "GET", "/ordenes?" + urlencode({"q": query}))
         assert numbers(first_view(html)) == [90]
         assert "1 orden · Página 1 de 1" in html
+    _, _, html = request(app, "GET", "/ordenes?q=90")
+    assert "95 órdenes" in html
+    assert numbers(first_view(html)) == [2, 4, 6, 8, 10]
     _, _, html = request(app, "GET", "/ordenes?q=JOSE")
     assert "95 órdenes" in html
     assert all(number % 2 for number in numbers(first_view(html)))
@@ -171,6 +174,7 @@ async def check_order_browser(tmp_path, viewport):
             assert await rows.count() == 1
             assert await rows.get_by_text("#90", exact=True).is_visible()
             assert await views.get_by_role("link", name="Siguiente").count() == 0
+            await rows.locator(".order-actions-menu summary").click()
             await rows.get_by_role("button", name="Editar").click()
             assert await search.input_value() == "90"
             editor = page.locator("#order-editor")
@@ -183,6 +187,7 @@ async def check_order_browser(tmp_path, viewport):
             assert await search.input_value() == "90"
             assert await rows.count() == 1
             assert app.state.store.get_journey()["orders"][89]["id"] == orders[89]["id"]
+            await rows.locator(".order-actions-menu summary").click()
             await rows.get_by_role("button", name="Eliminar").click()
             assert await search.input_value() == "90"
             assert await rows.count() == 0
@@ -191,8 +196,8 @@ async def check_order_browser(tmp_path, viewport):
             assert await rows.count() == size
             await search.fill("JOSE")
             await page.locator(".order-search").get_by_role("button", name="Buscar").click()
-            assert await rows.count() == size
-            assert await rows.locator('td[data-label="Autor"]').all_text_contents() == ["José"] * size
+            assert await rows.count() == 5
+            assert await rows.locator('td[data-label="Autor"]').all_text_contents() == ["José"] * 5
             await views.get_by_role("link", name="Siguiente").click()
             assert await search.input_value() == "JOSE"
             await assert_layout(page, viewport)

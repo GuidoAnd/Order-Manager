@@ -75,6 +75,15 @@ async def serve_asgi(app, route):
     )
 
 
+async def navigate_section(page, name):
+    menu = page.locator(".mobile-navigation")
+    if await menu.is_visible() and await menu.get_attribute("open") is None:
+        await menu.locator("summary").click()
+    await page.get_by_role("navigation", name="Secciones", exact=True).get_by_role(
+        "link", name=name, exact=True,
+    ).click()
+
+
 async def assert_layout(page, viewport):
     """La página cabe; solo las tablas pueden desplazarse horizontalmente."""
     assert await page.locator("link[rel=stylesheet]").evaluate(
@@ -150,7 +159,7 @@ async def run_mobile_workflow(tmp_path, viewport):
             assert await page.get_by_role("heading", name="Dashboard").is_visible()
             await assert_layout(page, viewport)
 
-            await page.get_by_role("link", name="Jornada", exact=True).click()
+            await navigate_section(page, "Jornada")
             await assert_layout(page, viewport)
             await page.locator('input[name="title"]').fill("Turno móvil")
             await page.get_by_role("button", name="Crear jornada").click()
@@ -165,7 +174,7 @@ async def run_mobile_workflow(tmp_path, viewport):
             assert await registered.is_visible()
             await assert_layout(page, viewport)
 
-            await page.get_by_role("link", name="Órdenes").click()
+            await navigate_section(page, "Órdenes")
             await assert_layout(page, viewport)
             await assert_order_buttons(page, viewport)
             await page.locator('select[name="author_id"]').select_option(label="Ana")
@@ -174,7 +183,7 @@ async def run_mobile_workflow(tmp_path, viewport):
             )
             await page.locator('input[name="quantity_0"]').fill("3")
             await page.get_by_role("button", name="Agregar artículo").click()
-            assert await page.locator("fieldset").count() == 2
+            assert await page.locator(".order-line").count() == 2
             await assert_layout(page, viewport)
             await page.locator('select[name="catalog_id_1"]').select_option(
                 label="Agua Villamanaos 600cc · precio a completar"
@@ -189,6 +198,7 @@ async def run_mobile_workflow(tmp_path, viewport):
             assert await order_lines.is_visible()
             await assert_layout(page, viewport)
 
+            await page.locator("#order-results .order-actions-menu:visible summary").click()
             await page.get_by_role("button", name="Editar", exact=True).click()
             order_id_field = page.locator(
                 'form[action="/ui/orders/form"] input[name="order_id"]'
@@ -198,26 +208,26 @@ async def run_mobile_workflow(tmp_path, viewport):
             await page.get_by_role("button", name="Guardar orden").click()
             assert await page.get_by_role("alert").is_visible()
             assert await page.get_by_role("heading", name="Editar orden").is_visible()
-            assert await page.locator("fieldset").count() == 2
+            assert await page.locator(".order-line").count() == 2
             assert await order_id_field.input_value() == order_id
             assert await page.locator('input[name="quantity_0"]').input_value() == "3"
             await assert_layout(page, viewport)
             await page.locator('input[name="new_unit_price_1"]').fill("2500")
             await page.get_by_role("button", name="Guardar orden").click()
-            assert await page.get_by_role("button", name="Editar", exact=True).count() == 1
+            assert await page.locator("#order-results .order-actions-menu:visible").count() == 1
             assert await page.get_by_role("cell", name="13400").is_visible()
 
-            await page.get_by_role("link", name="Dashboard").click()
+            await navigate_section(page, "Dashboard")
             assert await page.get_by_text("Turno móvil").is_visible()
             assert await page.get_by_role("heading", name="Ana").is_visible()
             assert await page.get_by_text("13400").count() >= 1
             await assert_layout(page, viewport)
 
-            await page.get_by_role("link", name="Artículos").click()
+            await navigate_section(page, "Artículos")
             assert await page.get_by_role(
                 "heading", name="Catálogo vendido de la jornada"
             ).is_visible()
-            cafe = page.locator("#sold-articles").get_by_text("Cafe", exact=True)
+            cafe = page.locator("#sold-articles .table-page-view:visible").get_by_text("Cafe", exact=True)
             assert await cafe.is_visible()
             await assert_article_layout(page, viewport)
             available = page.locator("#available-articles tbody tr:visible")
@@ -226,8 +236,11 @@ async def run_mobile_workflow(tmp_path, viewport):
             if viewport[0] <= 650:
                 pagination = page.get_by_role("navigation", name="Páginas de artículos")
                 assert await pagination.evaluate("node => getComputedStyle(node).justifyContent") == "center"
-                row_actions = page.locator("#available-articles .row-actions:visible").first
+                article_actions = available.first.locator(".article-actions")
+                await article_actions.locator("summary").click()
+                row_actions = article_actions.locator(".row-actions")
                 assert await row_actions.evaluate("node => getComputedStyle(node).alignItems") == "center"
+                await article_actions.locator("summary").click()
             if viewport[0] == 320:
                 for width, expected in [(374, 2), (375, 3), (650, 3), (651, 4), (1023, 4), (1024, 5)]:
                     await page.set_viewport_size({"width": width, "height": viewport[1]})
@@ -239,14 +252,14 @@ async def run_mobile_workflow(tmp_path, viewport):
                 "link", name="Siguiente"
             ).click()
             pages = (68 + page_size - 1) // page_size
-            assert await page.get_by_role("status").inner_text() == f"68 resultados · Página 2 de {pages}"
+            assert await page.locator("#available-articles").get_by_role("status").inner_text() == f"68 resultados · Página 2 de {pages}"
             assert await available.count() == page_size
             await page.get_by_role("searchbox", name="Buscar por nombre").fill("café")
             await page.get_by_role("button", name="Buscar", exact=True).click()
             assert await available.count() == min(3, page_size)
-            await available.filter(has=page.get_by_text("Cafe", exact=True)).get_by_role(
-                "button", name="Editar"
-            ).click()
+            coffee_row = available.filter(has=page.get_by_text("Cafe", exact=True))
+            await coffee_row.locator(".article-actions summary").click()
+            await coffee_row.get_by_role("button", name="Editar").click()
             assert await page.get_by_role("heading", name="Editar artículo").is_visible()
             await page.locator('#article-editor input[name="unit_price"]').fill("3100")
             await page.get_by_role("button", name="Guardar artículo").click()
@@ -279,10 +292,10 @@ async def run_mobile_workflow(tmp_path, viewport):
                 editor = await page.locator("#article-editor .actions").bounding_box()
                 assert abs(save_button["x"] + save_button["width"] / 2 - editor["x"] - editor["width"] / 2) <= 1
 
-            await page.get_by_role("link", name="Registros").click()
+            await navigate_section(page, "Registros")
             await assert_layout(page, viewport)
 
-            await page.get_by_role("link", name="Órdenes").click()
+            await navigate_section(page, "Órdenes")
             await page.locator('select[name="author_id"]').select_option(label="Ana")
             await page.locator('select[name="catalog_id_0"]').select_option(
                 label="Agua Villamanaos 600cc · precio a completar"
@@ -308,11 +321,11 @@ async def run_mobile_workflow(tmp_path, viewport):
             assert await subcategory.input_value() == "Aguas minerales"
             await assert_layout(page, viewport)
             await page.get_by_role("button", name="Agregar artículo").click()
-            first_line = page.locator("fieldset").first
+            first_line = page.locator(".order-line").first
             assert await first_line.get_by_role("radio", name="Nuevo producto").is_checked()
             assert await page.locator('input[name="name_0"]').input_value() == "Agua de los cielos"
             assert await page.locator('input[name="new_unit_price_0"]').input_value() == "900"
-            await page.locator("fieldset").last.get_by_role("button", name="Quitar artículo").click()
+            await page.locator(".order-line").last.get_by_role("button", name="Quitar artículo").click()
             await assert_order_buttons(page, viewport)
             await page.get_by_role("radio", name="Del inventario", exact=True).check()
             assert await page.locator('input[name="unit_price_0"]').input_value() == "2500"
@@ -325,7 +338,7 @@ async def run_mobile_workflow(tmp_path, viewport):
             assert len(app.state.store.get_journey()["orders"]) == 2
             await assert_layout(page, viewport)
 
-            await page.get_by_role("link", name="Artículos", exact=True).click()
+            await navigate_section(page, "Artículos")
             await page.get_by_role("searchbox", name="Buscar por nombre").fill("agua de los cielos")
             await page.get_by_role("button", name="Buscar", exact=True).click()
             assert await page.locator("#available-articles tbody tr:visible").count() == 1
@@ -334,10 +347,10 @@ async def run_mobile_workflow(tmp_path, viewport):
             await page.get_by_role("link", name="Ver órdenes que lo usan").click()
             assert await page.get_by_role("cell", name="Agua de los cielos × 3").is_visible()
             assert await page.get_by_role("cell", name="Cafe × 3, Agua Villamanaos 600cc × 2").count() == 0
-            assert await page.get_by_role("button", name="Editar", exact=True).count() == 1
+            assert await page.locator("#order-results .order-actions-menu:visible").count() == 1
             await assert_article_layout(page, viewport)
 
-            await page.get_by_role("link", name="Jornada", exact=True).click()
+            await navigate_section(page, "Jornada")
             await page.get_by_role("link", name="Cerrar y contabilizar ventas").click()
             journey_id = await page.locator('input[name="journey_id"]').input_value()
             await assert_layout(page, viewport)

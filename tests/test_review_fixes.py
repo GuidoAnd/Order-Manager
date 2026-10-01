@@ -305,7 +305,8 @@ def test_distinct_articles_keep_separate_totals_and_labels(active_app):
     assert len(stats["by_article"]) == len(identities)
     assert len({article_statistics_label(key) for key in keys}) == len(keys)
     sold = articles_page(store).split('id="sold-articles"', 1)[1].split('</section>', 1)[0]
-    assert sold.count('data-label="Artículo">Especial</td>') == 3
+    first_sold_page = sold.split('class="table-page-view', 2)[1]
+    assert first_sold_page.count('data-label="Artículo">Especial</td>') == 3
     assert 'data-label="Artículo">Frías / Especial</td>' in sold
     assert 'Bebidas / Casa' not in sold
     for index, key in enumerate(keys, start=1):

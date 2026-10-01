@@ -52,6 +52,76 @@ nav a:hover {
     text-decoration: underline;
 }
 
+.mobile-navigation {
+    display: none;
+}
+
+.top nav a {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: .5rem;
+    border-radius: 6px;
+}
+
+.top a:focus-visible, .mobile-navigation > summary:focus-visible,
+.article-actions > summary:focus-visible {
+    outline: 2px solid #76b7f1;
+    outline-offset: 3px;
+}
+
+.article-actions {
+    border: 0;
+    padding: 0;
+    min-width: 0;
+}
+
+.article-actions > summary {
+    min-height: 44px;
+    max-width: 100%;
+    list-style: none;
+}
+
+.article-actions > summary::-webkit-details-marker,
+.mobile-navigation > summary::-webkit-details-marker {
+    display: none;
+}
+
+.article-actions .row-actions {
+    margin-top: 1rem;
+}
+
+@media (max-width: 1023px) {
+    .top {
+        flex-wrap: wrap;
+        padding: 1rem;
+    }
+    .top .desktop-navigation {
+        display: none;
+    }
+    .mobile-navigation {
+        display: block;
+        width: 100%;
+        border: 0;
+        padding: 0;
+        min-width: 0;
+    }
+    .mobile-navigation > summary {
+        min-height: 44px;
+        width: fit-content;
+        max-width: 100%;
+        list-style: none;
+    }
+    .mobile-navigation nav {
+        flex-direction: column;
+        gap: .5rem;
+        margin-top: 1rem;
+    }
+    .mobile-navigation nav a {
+        background: #263e5b;
+    }
+}
+
 main {
     max-width: 1050px;
     margin: 2rem auto;
@@ -354,6 +424,7 @@ button:hover, .button:hover {
 }
 
 .authors-registered {
+    min-width: 0;
     background: #f5f8fb;
     border: 1px solid #d8e0e8;
     border-radius: 8px;
@@ -362,6 +433,10 @@ button:hover, .button:hover {
 
 .authors-registered .list {
     margin-bottom: 0;
+}
+
+.author-names li {
+    overflow-wrap: anywhere;
 }
 
 .author-actions {
@@ -508,7 +583,7 @@ footer {
         width: 100%;
     }
     .authors-layout {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 
@@ -525,4 +600,96 @@ footer {
     #article-editor button {
         min-height: 44px;
     }
+}
+
+.order-actions-menu {
+    border: 0;
+    padding: 0;
+    min-width: 0;
+}
+
+.order-actions-menu > summary, .subtotal-orders > summary {
+    min-height: 44px;
+    max-width: 100%;
+    list-style: none;
+}
+
+.order-actions-menu > summary::-webkit-details-marker,
+.subtotal-orders > summary::-webkit-details-marker {
+    display: none;
+}
+
+.order-actions-menu > summary:focus-visible,
+.subtotal-orders > summary:focus-visible {
+    outline: 2px solid #1c5d96;
+    outline-offset: 3px;
+}
+
+.order-actions-menu .row-actions {
+    margin-top: 1rem;
+    gap: 1rem;
+}
+
+.order-actions-menu button {
+    min-height: 44px;
+}
+
+.subtotal-orders {
+    border: 0;
+    padding: 0;
+}
+
+.subtotal-orders li {
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 650px) {
+    #order-results .row-actions,
+    #order-results td[data-label="Acciones"] {
+        text-align: center;
+        align-items: center;
+    }
+}
+
+.order-status-options {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: .5rem .75rem;
+}
+
+.order-status-options input[type="radio"] {
+    align-self: center;
+    width: 22px;
+    height: 22px;
+    margin: 0;
+    padding: 0;
+    accent-color: #1c5d96;
+}
+
+.order-status-options label {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    margin: 0;
+    cursor: pointer;
+}
+
+.not-billed-note {
+    display: none;
+}
+
+.order-form:has(input[name="order_status"][value="not_billed"]:checked) .line-price {
+    display: none;
+}
+
+.order-form:has(input[name="order_status"][value="not_billed"]:checked) .not-billed-note {
+    display: block;
+}
+
+.order-state {
+    display: block;
+    margin-top: .5rem;
+    color: #68410a;
+    font-weight: 600;
+    overflow-wrap: anywhere;
 }
