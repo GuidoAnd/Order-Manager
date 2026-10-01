@@ -108,7 +108,10 @@ def test_temporary_article_links_only_to_orders_using_its_full_identity(app):
     status, _, orders = request(app, "GET", link)
     assert status == 200
     assert "Especial × 1" in orders and "ESPECIAL × 2" in orders
-    assert orders.count('name="edit"') == 2
+    first_page = orders.split('<div class="order-page-size', 1)[1].split(
+        '<div class="order-page-size', 1,
+    )[0]
+    assert first_page.count('name="edit"') == 2
     store.delete_order(first["id"])
     store.delete_order(second["id"])
     status, _, stale = request(app, "GET", link)

@@ -50,6 +50,21 @@ En móvil, las acciones finales se apilan y separan. «Guardar orden» ocupa el 
 disponible y tiene mayor tamaño que «Agregar artículo» (verde) y «Quitar artículo»
 (rojo); ambos mantienen una altura mínima de 44 px.
 
+## Consulta de órdenes
+
+El listado mantiene la agrupación por autor y limita el total de órdenes visibles
+por página: 2 hasta 374 px, 3 hasta 650 px, 4 hasta 1023 px y 5 desde 1024 px.
+Anterior y Siguiente recorren las órdenes ordenadas por número. Solo se muestran
+los autores con órdenes en la página actual. Las reglas de visibilidad se incluyen
+en el HTML para mantener una sola vista incluso con una hoja externa antigua.
+
+La búsqueda admite el número exacto (90 o #90) o parte del nombre del autor,
+sin distinguir mayúsculas ni acentos. Una búsqueda nueva comienza en la primera
+página. El filtro por artículo se combina con la búsqueda y ambos se conservan
+al paginar, editar, agregar/quitar líneas, guardar o eliminar. Una página que
+queda fuera del rango disponible se ajusta a la última página válida.
+Los filtros afectan la consulta, no los totales ni los datos de las órdenes.
+
 ## Consulta y administración de artículos
 
 La lista de artículos disponibles permite buscar por nombre y filtrar por categoría
@@ -81,6 +96,27 @@ Hasta 650 px, las tablas de Artículos y el listado de Órdenes se presentan com
 verticales con etiquetas. Sus datos y acciones caben sin desplazamiento lateral.
 En tamaños mayores conservan la presentación de tabla. Los textos largos pueden
 partirse y los campos y columnas flexibles se ajustan al ancho disponible.
+
+## Nombre de la jornada
+
+La jornada abierta muestra «Editar nombre» junto al título. Un desplegable HTML
+contiene el nombre actual y las acciones Guardar y Cancelar. Guardar actualiza
+solo el título y registra la acción; conserva identificador, órdenes, autores
+y fecha de apertura. Cancelar vuelve a la sección sin modificar datos.
+La validación conserva el texto ingresado y mantiene abierto el editor ante
+un error. Las jornadas cerradas no pueden renombrarse.
+
+## Gestión de autores
+
+Los nombres registrados permanecen visibles con los formularios cerrados.
+«Agregar autor» despliega el campo de nombre, Guardar autor y Cancelar.
+«Editar autores» despliega los nombres editables y las acciones Guardar nombre
+y Eliminar. El listado de lectura se oculta mientras ese editor está abierto.
+
+Guardar conserva el identificador del autor y sus órdenes; los nombres vacíos
+o duplicados se rechazan. Eliminar mantiene la protección existente para autores
+con órdenes y no valida el campo de renombrado. Cancelar vuelve a Jornada sin
+guardar. Los errores conservan el texto y reabren el formulario correspondiente.
 
 ## Cierre y descarte
 

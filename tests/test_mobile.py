@@ -158,9 +158,10 @@ async def run_mobile_workflow(tmp_path, viewport):
             assert await page.get_by_role("heading", name="Turno móvil").is_visible()
             await assert_layout(page, viewport)
 
-            await page.locator('input[name="name"]').fill("Ana")
+            await page.locator(".author-add summary").click()
+            await page.locator('.author-add input[name="name"]').fill("Ana")
             await page.get_by_role("button", name="Guardar autor").click()
-            registered = page.locator(".authors-registered").get_by_text("Ana")
+            registered = page.locator(".author-names").get_by_text("Ana")
             assert await registered.is_visible()
             await assert_layout(page, viewport)
 
@@ -318,7 +319,9 @@ async def run_mobile_workflow(tmp_path, viewport):
             await page.get_by_role("radio", name="Nuevo producto").check()
             await page.get_by_role("button", name="Guardar orden").click()
             assert await page.get_by_role("cell", name="Agua de los cielos × 3").is_visible()
-            assert await page.get_by_text("2700", exact=True).is_visible()
+            assert await page.locator(".order-page-size:visible").get_by_text(
+                "2700", exact=True,
+            ).is_visible()
             assert len(app.state.store.get_journey()["orders"]) == 2
             await assert_layout(page, viewport)
 

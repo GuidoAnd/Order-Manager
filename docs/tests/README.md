@@ -1,6 +1,6 @@
 # Resultados de pruebas por versión
 
-Actualizado: **2026-09-30T04:54:05Z** (UTC).
+Actualizado: **2026-10-01T04:20:31Z** (UTC).
 
 Los informes se agrupan según la versión evaluada. Cada archivo conserva su
 fecha UTC, alcance y resultado PASS/FAIL. Son registros históricos: sus cantidades
@@ -9,7 +9,7 @@ no se suman ni implican que una versión en desarrollo esté terminada.
 | Versión | Directorio | Resumen de resultados |
 | --- | --- | --- |
 | v0.1 | [v0_1/](v0_1/) | Revisión final PASS: 22 pruebas funcionales e integrales de jornadas, autores, órdenes, artículos, estadísticas y cierre JSON. |
-| v0.2, en desarrollo | [v0_2/](v0_2/) | Última ejecución PASS: 66 pruebas, incluidas 15 de navegador desde 320 px. Cubre el flujo completo y una sola lista de artículos con CSS antiguo o no disponible. |
+| v0.2, en desarrollo | [v0_2/](v0_2/) | Última ejecución PASS: 96 pruebas, incluidas 30 de navegador desde 320 px. Cubre el flujo completo, los editores desplegables y la paginación y búsqueda de artículos y órdenes. |
 
 ## v0.1
 
@@ -36,6 +36,11 @@ los avances de la versión actual.
 - [Búsqueda de artículos y fichas](v0_2/ARTICLE_BROWSER_20260930T032213Z.md).
 - [Ajustes adaptables de Artículos](v0_2/ARTICLES_RESPONSIVE_20260930T043731Z.md).
 - [Corrección de listas repetidas](v0_2/ARTICLE_LIST_VISIBILITY_20260930T045405Z.md).
+- [Edición del nombre de jornada](v0_2/JOURNEY_NAME_EDITOR_20261001T034449Z.md).
+
+- [Formularios de autores](v0_2/AUTHOR_EDITORS_20261001T035928Z.md).
+
+- [Paginación y búsqueda de órdenes](v0_2/ORDER_BROWSER_20261001T042031Z.md).
 
 Las pruebas de navegador documentadas usan Chromium emulado; sus resultados no
 constituyen validación en dispositivos físicos o en otros motores.

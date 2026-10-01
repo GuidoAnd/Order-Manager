@@ -9,7 +9,7 @@ import json
 import re
 from urllib.parse import urlencode
 
-from .article_search import ArticleSearch, article_identity
+from .article_search import ArticleSearch, article_identity, searchable
 from .store import DomainError, Store, summary
 
 
@@ -145,12 +145,19 @@ def dashboard(store: Store) -> str:
     return layout("Dashboard", body)
 
 
-def _author_row(author: dict) -> str:
+def _author_row(author: dict, values: dict) -> str:
+    name = values.get("name", "") if values.get("author_id") == author["id"] else author["name"]
     return f"""<li class="author-item">
-        <form class="author-actions" method="post" action="/ui/journey">
+        <form method="post" action="/ui/journey">
             <input type="hidden" name="author_id" value="{h(author['id'])}">
-            <span class="author-name">{h(author['name'])}</span>
-            <button class="danger" name="action" value="delete_author">Eliminar</button>
+            <label>Nombre del autor
+                <input name="name" value="{h(name)}" required autocomplete="off">
+            </label>
+            <div class="actions">
+                <button name="action" value="rename_author">Guardar nombre</button>
+                <button class="danger" name="action" value="delete_author"
+                        formnovalidate>Eliminar</button>
+            </div>
         </form>
     </li>"""
 
@@ -206,7 +213,10 @@ def _author_results(author: dict, orders: list[dict], stats: dict) -> str:
     </div>"""
 
 
-def journey_page(store: Store, error: str = "") -> str:
+def journey_page(
+    store: Store, error: str = "", rename_title: str | None = None,
+    author_values: dict | None = None,
+) -> str:
     journey = store.get_journey()
     if not journey:
         body = """<section class="panel">
@@ -222,9 +232,17 @@ def journey_page(store: Store, error: str = "") -> str:
         </section>"""
         return layout("Jornada", alert(error) + body)
 
-    authors = "\n".join(_author_row(author) for author in journey["authors"])
-    if not authors:
-        authors = "<li>Aún no hay autores.</li>"
+    author_values = author_values or {}
+    author_action = author_values.get("action")
+    add_open = " open" if author_action == "add_author" else ""
+    edit_open = " open" if author_action in {"rename_author", "delete_author"} else ""
+    add_name = author_values.get("name", "") if author_action == "add_author" else ""
+    author_names = "\n".join(
+        f"<li>{h(author['name'])}</li>" for author in journey["authors"]
+    ) or "<li>Aún no hay autores.</li>"
+    authors = "\n".join(
+        _author_row(author, author_values) for author in journey["authors"]
+    ) or "<li>Aún no hay autores.</li>"
     stats = summary(journey)
     author_results = "\n".join(
         _author_results(
@@ -239,29 +257,49 @@ def journey_page(store: Store, error: str = "") -> str:
         for author in journey["authors"]
     ) or "<p>Aún no hay autores.</p>"
 
+    editor_open = " open" if rename_title is not None else ""
+    title_value = journey["title"] if rename_title is None else rename_title
     body = f"""<section class="panel">
-        <h2>{h(journey['title'])}</h2>
+        <details class="journey-name-editor"{editor_open}>
+            <summary aria-label="Editar nombre">
+                <h2>{h(journey['title'])}</h2>
+                <span class="button quiet">Editar nombre</span>
+            </summary>
+            <form method="post" action="/ui/journey">
+                <label>Nombre de la jornada
+                    <input name="title" value="{h(title_value)}" required maxlength="120">
+                </label>
+                <div class="actions">
+                    <button name="action" value="rename">Guardar</button>
+                    <a class="button quiet" href="/jornada">Cancelar</a>
+                </div>
+            </form>
+        </details>
         <p>Abierta: {h(journey['opened_at'])}</p>
-        <form class="inline" method="post" action="/ui/journey">
-            <input name="title" value="{h(journey['title'])}" required>
-            <button name="action" value="rename">Renombrar jornada</button>
-        </form>
     </section>
     <section class="panel">
         <h2>Autores</h2>
         <div class="authors-layout">
-            <div>
-                <h3>Dar de alta un autor</h3>
+            <details class="author-add author-disclosure"{add_open}>
+                <summary class="button add-article">Agregar autor</summary>
                 <form method="post" action="/ui/journey">
                     <label>Nombre del autor
-                        <input name="name" required autocomplete="off">
+                        <input name="name" value="{h(add_name)}" required autocomplete="off">
                     </label>
-                    <button name="action" value="add_author">Guardar autor</button>
+                    <div class="actions">
+                        <button name="action" value="add_author">Guardar autor</button>
+                        <a class="button quiet" href="/jornada">Cancelar</a>
+                    </div>
                 </form>
-            </div>
+            </details>
             <div class="authors-registered">
                 <h3>Autores dados de alta</h3>
-                <ul class="list">{authors}</ul>
+                <ul class="list author-names">{author_names}</ul>
+                <details class="author-editor author-disclosure"{edit_open}>
+                    <summary class="button quiet">Editar autores</summary>
+                    <ul class="list">{authors}</ul>
+                    <a class="button quiet" href="/jornada">Cancelar</a>
+                </details>
             </div>
         </div>
     </section>
@@ -420,7 +458,9 @@ def _order_line(index: int, row: dict, catalog: list[dict], inventory: dict) -> 
     </fieldset>"""
 
 
-def _order_row(order: dict, authors: dict[str, str]) -> str:
+def _order_row(
+    order: dict, authors: dict[str, str], page: int, article_id: str, query: str,
+) -> str:
     details = ", ".join(
         f'{line["name"]} × {line["quantity"]}'
         for line in order["lines"]
@@ -434,16 +474,117 @@ def _order_row(order: dict, authors: dict[str, str]) -> str:
         <td data-label="Acciones">
             <div class="row-actions">
                 <form method="get" action="/ordenes#order-editor">
+                    {_order_list_fields(page, article_id, query)}
                     <input type="hidden" name="edit" value="{h(order['id'])}">
                     <button type="submit">Editar</button>
                 </form>
                 <form method="post" action="/ui/orders/delete">
+                    {_order_list_fields(page, article_id, query)}
                     <input type="hidden" name="order_id" value="{h(order['id'])}">
                     <button class="danger" type="submit">Eliminar</button>
                 </form>
             </div>
         </td>
     </tr>"""
+
+
+def _order_list_fields(page: int, article_id: str, query: str) -> str:
+    return (
+        f'<input type="hidden" name="page" value="{h(page)}">'
+        f'<input type="hidden" name="article" value="{h(article_id)}">'
+        f'<input type="hidden" name="q" value="{h(query)}">'
+    )
+
+
+def orders_url(page: int = 1, article_id: str = "", query: str = "") -> str:
+    return "/ordenes?" + urlencode({"page": page, "article": article_id, "q": query})
+
+
+def _order_results(
+    orders: list[dict], authors: list[dict], page: int, article_id: str,
+    query: str, size: int,
+) -> str:
+    total = len(orders)
+    pages = max(1, (total + size - 1) // size)
+    page = min(max(1, page), pages)
+    selected = orders[(page - 1) * size:page * size]
+    names = {author["id"]: author["name"] for author in authors}
+    sections = []
+    for author in authors:
+        author_orders = [order for order in selected if order["author_id"] == author["id"]]
+        if not author_orders:
+            continue
+        rows = "\n".join(
+            _order_row(order, names, page, article_id, query) for order in author_orders
+        )
+        sections.append(f"""<div class="author-summary">
+            <h3>{h(author['name'])}</h3>
+            <div class="table-wrap responsive-table">
+                <table>
+                    <thead><tr>
+                        <th>Número</th><th>Autor</th><th>Artículos</th>
+                        <th>Total</th><th>Acciones</th>
+                    </tr></thead>
+                    <tbody>{rows}</tbody>
+                </table>
+            </div>
+        </div>""")
+    content = "\n".join(sections) or (
+        "<p>No hay órdenes que coincidan con la búsqueda.</p>" if query.strip()
+        else "<p>No hay órdenes que usen este artículo.</p>" if article_id
+        else "<p>Aún no hay órdenes.</p>"
+    )
+    links = []
+    if page > 1:
+        links.append(
+            f'<a class="button" href="{h(orders_url(page - 1, article_id, query))}#order-results">Anterior</a>'
+        )
+    if page < pages:
+        links.append(
+            f'<a class="button quiet" href="{h(orders_url(page + 1, article_id, query))}#order-results">Siguiente</a>'
+        )
+    label = "orden" if total == 1 else "órdenes"
+    return f"""<div class="order-page-size order-page-{size}">
+        <p role="status">{total} {label} · Página {page} de {pages}</p>
+        {content}
+        <nav class="pagination" aria-label="Páginas de órdenes">{''.join(links)}</nav>
+    </div>"""
+
+
+def _order_page_styles() -> str:
+    """Mantiene una sola página visible, incluso con estilos externos antiguos."""
+    return """<style>
+        #order-results .order-page-size {
+            display: none;
+        }
+        #order-results .order-page-2 {
+            display: block;
+        }
+        @media (min-width: 375px) {
+            #order-results .order-page-2 {
+                display: none;
+            }
+            #order-results .order-page-3 {
+                display: block;
+            }
+        }
+        @media (min-width: 651px) {
+            #order-results .order-page-3 {
+                display: none;
+            }
+            #order-results .order-page-4 {
+                display: block;
+            }
+        }
+        @media (min-width: 1024px) {
+            #order-results .order-page-4 {
+                display: none;
+            }
+            #order-results .order-page-5 {
+                display: block;
+            }
+        }
+    </style>"""
 
 
 def orders_page(
@@ -453,6 +594,8 @@ def orders_page(
     edit_id: str = "",
     error: str = "",
     article_id: str = "",
+    page: int = 1,
+    query: str = "",
 ) -> str:
     journey = store.get_journey()
     if not journey:
@@ -481,10 +624,6 @@ def orders_page(
         _order_line(index, row, available_articles, inventory)
         for index, row in enumerate(rows)
     )
-    author_names = {
-        author["id"]: author["name"]
-        for author in journey["authors"]
-    }
     visible_orders = journey["orders"]
     filter_notice = ""
     if article_id:
@@ -508,40 +647,41 @@ def orders_page(
             f'<a class="button" href="{h(back)}#article-results">Volver a Artículos</a>'
             '<a class="button quiet" href="/ordenes">Ver todas las órdenes</a></div>'
         )
-    order_sections = []
-    for author in journey["authors"]:
-        author_orders = [
+    search_query = searchable(query.strip())
+    if search_query:
+        names = {author["id"]: author["name"] for author in journey["authors"]}
+        number = search_query.removeprefix("#").strip()
+        visible_orders = [
             order for order in visible_orders
-            if order["author_id"] == author["id"]
+            if (
+                str(order["number"]) == number if number.isdecimal()
+                else search_query in searchable(names.get(order["author_id"], ""))
+            )
         ]
-        if article_id and not author_orders:
-            continue
-        order_rows = "\n".join(
-            _order_row(order, author_names)
-            for order in author_orders
-        ) or '<tr><td colspan="5">Sin órdenes.</td></tr>'
-        order_sections.append(f"""<div class="author-summary">
-            <h3>{h(author['name'])}</h3>
-            <div class="table-wrap responsive-table">
-                <table>
-                    <thead><tr>
-                        <th>Número</th><th>Autor</th><th>Artículos</th>
-                        <th>Total</th><th>Acciones</th>
-                    </tr></thead>
-                    <tbody>{order_rows}</tbody>
-                </table>
-            </div>
-        </div>""")
-    grouped_orders = "\n".join(order_sections) or (
-        "<p>No hay órdenes que usen este artículo.</p>" if article_id
-        else "<p>Aún no hay autores.</p>"
+    visible_orders = sorted(visible_orders, key=lambda order: order["number"])
+    grouped_orders = "\n".join(
+        _order_results(visible_orders, journey["authors"], page, article_id, query, size)
+        for size in (5, 4, 3, 2)
     )
     form_title = "Editar orden" if selected_order else "Crear orden"
 
     body = f"""<section class="panel">
         <h2>Órdenes por autor</h2>
         {filter_notice}
-        {grouped_orders}
+        <form class="order-search" method="get" action="/ordenes#order-results">
+            <input type="hidden" name="article" value="{h(article_id)}">
+            <label>Buscar por número o autor
+                <input type="search" name="q" value="{h(query)}"
+                       placeholder="90 o nombre del autor">
+            </label>
+            <div class="actions">
+                <button type="submit">Buscar</button>
+                <a class="button quiet" href="{h(orders_url(article_id=article_id))}#order-results">
+                    Limpiar búsqueda
+                </a>
+            </div>
+        </form>
+        <div id="order-results">{grouped_orders}</div>
     </section>
     <section class="panel" id="order-editor">
         <h2>{form_title}</h2>
@@ -549,6 +689,7 @@ def orders_page(
            Café × 3. Completa el precio cuando el artículo no lo tenga definido.
            El total se calcula al guardar.</p>
         <form method="post" action="/ui/orders/form" novalidate>
+            {_order_list_fields(page, article_id, query)}
             <input type="hidden" name="count" value="{len(rows)}">
             <input type="hidden" name="order_id" value="{h(edit_id)}">
             <label>Autor
@@ -566,7 +707,10 @@ def orders_page(
             </div>
         </form>
     </section>"""
-    return layout("Órdenes", alert(error) + body, _subcategory_styles(inventory))
+    return layout(
+        "Órdenes", alert(error) + body,
+        _subcategory_styles(inventory) + _order_page_styles(),
+    )
 
 
 def _search_fields(search: ArticleSearch, *, post: bool = False, page: int | None = None) -> str:

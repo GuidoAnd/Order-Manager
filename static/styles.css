@@ -207,6 +207,54 @@ button:hover, .button:hover {
     gap: .6rem;
 }
 
+.journey-name-editor {
+    border: 0;
+    padding: 0;
+}
+
+.journey-name-editor > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: .75rem;
+    list-style: none;
+}
+
+.journey-name-editor > summary::-webkit-details-marker {
+    display: none;
+}
+
+.journey-name-editor h2 {
+    flex: 1 1 140px;
+    min-width: 0;
+    margin: 0;
+}
+
+.journey-name-editor .button,
+.journey-name-editor button {
+    min-height: 44px;
+}
+
+.journey-name-editor > summary .button {
+    padding: .65rem .75rem;
+    font-size: .9rem;
+}
+
+.journey-name-editor > summary:focus-visible {
+    outline: 2px solid #1c5d96;
+    outline-offset: 4px;
+    border-radius: 6px;
+}
+
+.journey-name-editor form {
+    margin-top: 1rem;
+}
+
+.journey-name-editor .actions {
+    gap: 1rem;
+}
+
 .journey-final-actions {
     gap: 1.25rem;
 }
@@ -222,12 +270,13 @@ button:hover, .button:hover {
     margin: 0;
 }
 
-.article-search .actions, .pagination {
+.article-search .actions, .order-search .actions, .pagination {
     margin-top: 1.25rem;
     gap: 1rem;
 }
 
 .article-search button, .article-search .button,
+.order-search button, .order-search .button,
 .pagination .button, .responsive-table button, .responsive-table .button {
     min-height: 44px;
 }
@@ -254,6 +303,50 @@ button:hover, .button:hover {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1.5rem;
+}
+
+.author-disclosure {
+    border: 0;
+    padding: 0;
+    align-self: start;
+}
+
+.author-disclosure > summary {
+    width: fit-content;
+    max-width: 100%;
+    min-height: 44px;
+    list-style: none;
+}
+
+.author-disclosure > summary::-webkit-details-marker {
+    display: none;
+}
+
+.author-disclosure > summary:focus-visible {
+    outline: 2px solid #1c5d96;
+    outline-offset: 4px;
+}
+
+.author-disclosure form {
+    margin-top: 1rem;
+}
+
+.author-disclosure .actions {
+    gap: 1rem;
+}
+
+.author-disclosure button, .author-disclosure a.button {
+    min-height: 44px;
+}
+
+.author-editor .author-item + .author-item {
+    border-top: 1px solid #dce3ea;
+    padding-top: 1rem;
+    margin-top: 1rem;
+}
+
+.authors-registered:has(.author-editor[open]) > .author-names {
+    display: none;
 }
 
 .authors-layout h3 {

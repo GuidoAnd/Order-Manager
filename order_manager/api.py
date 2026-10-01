@@ -240,8 +240,10 @@ def make_app(global_file: Path | None = None) -> FastAPI:
         return web.journey_page(store)
 
     @app.get("/ordenes", response_class=HTMLResponse)
-    def orders_page(edit: str = "", article: str = ""):
-        return web.orders_page(store, edit_id=edit, article_id=article)
+    def orders_page(
+        edit: str = "", article: str = "", page: int = Query(default=1, ge=1), q: str = "",
+    ):
+        return web.orders_page(store, edit_id=edit, article_id=article, page=page, query=q)
 
     @app.get("/articulos", response_class=HTMLResponse)
     def articles_page(
@@ -294,7 +296,13 @@ def make_app(global_file: Path | None = None) -> FastAPI:
                 raise DomainError("Acción no reconocida.")
             return RedirectResponse("/jornada", status_code=303)
         except DomainError as error:
-            return HTMLResponse(web.journey_page(store, str(error)), status_code=error.status)
+            rename_title = values.get("title", "") if values.get("action") == "rename" else None
+            return HTMLResponse(
+                web.journey_page(
+                    store, str(error), rename_title=rename_title, author_values=values,
+                ),
+                status_code=error.status,
+            )
 
     @app.post("/ui/articles")
     async def article_action(request: Request):
@@ -348,15 +356,26 @@ def make_app(global_file: Path | None = None) -> FastAPI:
                 status_code=error.status,
             )
 
+    def order_list_state(values: dict) -> dict:
+        try:
+            page = max(1, int(values.get("page", "1")))
+        except ValueError:
+            page = 1
+        return {
+            "page": page, "article_id": values.get("article", ""),
+            "query": values.get("q", ""),
+        }
+
     @app.post("/ui/orders/delete")
     async def order_delete(request: Request):
         values = await fields(request)
+        state = order_list_state(values)
         try:
             store.delete_order(values.get("order_id", ""))
-            return RedirectResponse("/ordenes", status_code=303)
+            return RedirectResponse(web.orders_url(**state) + "#order-results", status_code=303)
         except DomainError as error:
             return HTMLResponse(
-                web.orders_page(store, error=str(error)),
+                web.orders_page(store, error=str(error), **state),
                 status_code=error.status,
             )
 
@@ -364,6 +383,7 @@ def make_app(global_file: Path | None = None) -> FastAPI:
     async def order_form(request: Request):
         values = await fields(request)
         rows = None
+        state = order_list_state(values)
         try:
             count = int(values.get("count", "1"))
             if count < 1 or count > 50:
@@ -385,7 +405,7 @@ def make_app(global_file: Path | None = None) -> FastAPI:
                     order_form_lines(rows, inventory),
                     values.get("order_id") or None,
                 )
-                return RedirectResponse("/ordenes", status_code=303)
+                return RedirectResponse(web.orders_url(**state) + "#order-results", status_code=303)
             else:
                 raise DomainError("Acción no reconocida.")
             page = web.orders_page(
@@ -393,6 +413,7 @@ def make_app(global_file: Path | None = None) -> FastAPI:
                 rows,
                 values.get("author_id", ""),
                 values.get("order_id", ""),
+                **state,
             )
             return HTMLResponse(page)
         except (DomainError, ValueError, IndexError) as error:
@@ -404,6 +425,7 @@ def make_app(global_file: Path | None = None) -> FastAPI:
                     author_id=values.get("author_id", ""),
                     edit_id=values.get("order_id", ""),
                     error=str(error),
+                    **state,
                 ),
                 status_code=status,
             )
