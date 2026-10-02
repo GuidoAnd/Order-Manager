@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from urllib.parse import parse_qs
+from typing import Annotated, Literal
+from urllib.parse import parse_qs, urlencode
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -12,12 +13,23 @@ from fastapi.responses import (
     RedirectResponse,
     Response,
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field
 
-from . import web
-from .store import DomainError, Store
+from . import journey_results, web
+from .article_search import ArticleSearch
+from .export_formats import ExportFormat, download_file
+from .store import MAX_INPUT_INTEGER, DomainError, Store
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def reject_boolean(value: object) -> object:
+    if isinstance(value, bool):
+        raise ValueError("El valor debe ser un número entero, no un booleano.")
+    return value
+
+
+NonBooleanInt = Annotated[int, BeforeValidator(reject_boolean)]
 
 
 class NameInput(BaseModel):
@@ -28,11 +40,15 @@ class JourneyInput(BaseModel):
     title: str = Field(min_length=1)
 
 
+class JourneyConfirmation(BaseModel):
+    journey_id: str = Field(min_length=1)
+
+
 class ArticleInput(BaseModel):
     name: str
     category: str
     subcategory: str
-    unit_price: int = Field(ge=0)
+    unit_price: NonBooleanInt | None = Field(default=None, ge=0, le=MAX_INPUT_INTEGER)
 
 
 class LineInput(BaseModel):
@@ -40,17 +56,73 @@ class LineInput(BaseModel):
     name: str | None = None
     category: str | None = None
     subcategory: str | None = None
-    unit_price: int | None = Field(default=None, ge=0)
-    quantity: int = Field(ge=1)
+    unit_price: NonBooleanInt | None = Field(default=None, ge=0, le=MAX_INPUT_INTEGER)
+    quantity: NonBooleanInt = Field(ge=1, le=MAX_INPUT_INTEGER)
 
 
 class OrderInput(BaseModel):
     author_id: str
+    status: Literal["sale", "not_billed"] = "sale"
     lines: list[LineInput] = Field(min_length=1, max_length=50)
 
 
+def order_form_rows(values: dict, count: int, inventory: dict) -> list[dict]:
+    rows = []
+    for index in range(count):
+        row = {
+            key: values.get(f"{key}_{index}", "")
+            for key in (
+                "source", "catalog_id", "name", "category", "quantity",
+                "unit_price", "new_unit_price",
+            )
+        }
+        row["subcategories"] = {
+            str(position): values.get(f"subcategory_{index}_{position}", "")
+            for position in range(len(inventory["categories"]))
+        }
+        row["subcategory"] = next(
+            (row["subcategories"][str(position)]
+             for position, category in enumerate(inventory["categories"])
+             if category["name"] == row["category"]),
+            "",
+        )
+        rows.append(row)
+    return rows
+
+
+def order_form_lines(rows: list[dict], inventory: dict) -> list[dict]:
+    lines = []
+    for index, row in enumerate(rows, start=1):
+        if row["source"] == "inventory":
+            if not row["catalog_id"]:
+                raise DomainError(f"Artículo {index}: selecciona un artículo del inventario.")
+            line = {
+                key: row[key] for key in ("catalog_id", "quantity", "unit_price")
+            }
+        elif row["source"] == "new":
+            category = next(
+                (item for item in inventory["categories"] if item["name"] == row["category"]),
+                None,
+            )
+            if category is None:
+                raise DomainError(f"Artículo {index}: selecciona una categoría existente.")
+            if not any(
+                item["category_id"] == category["id"] and item["name"] == row["subcategory"]
+                for item in inventory["subcategories"]
+            ):
+                raise DomainError(f"Artículo {index}: selecciona una subcategoría de esa categoría.")
+            line = {
+                key: row[key] for key in ("name", "category", "subcategory", "quantity")
+            }
+            line["unit_price"] = row["new_unit_price"]
+        else:
+            raise DomainError(f"Artículo {index}: elige Del inventario o Nuevo producto.")
+        lines.append(line)
+    return lines
+
+
 def make_app(global_file: Path | None = None) -> FastAPI:
-    app = FastAPI(title="Order Manager", version="0.1")
+    app = FastAPI(title="Order Manager", version="0.2")
     store = Store(global_file or ROOT / "data" / "global_stats.json")
     app.state.store = store
 
@@ -71,33 +143,33 @@ def make_app(global_file: Path | None = None) -> FastAPI:
         return store.rename_journey(data.title)
 
     @app.post("/api/journey/close")
-    def close_journey():
-        journey = store.get_journey()
-        payload = store.close_journey()
+    def close_journey(data: JourneyConfirmation):
+        payload = store.close_journey(data.journey_id)
         return Response(
             payload,
             media_type="application/json",
             headers={
                 "Content-Disposition": (
-                    f'attachment; filename="jornada-{journey["id"]}.json"'
+                    f'attachment; filename="jornada-{data.journey_id}.json"'
                 )
             },
         )
 
     @app.get("/api/exports/last")
-    def latest_export():
-        journey_id, payload = store.get_last_export()
+    def latest_export(journey_id: str | None = None, format: ExportFormat = "json"):
+        journey_id, payload = store.get_last_export(journey_id)
+        filename, media_type, content = download_file(journey_id, payload, format)
         return Response(
-            payload,
-            media_type="application/json",
+            content,
+            media_type=media_type,
             headers={
-                "Content-Disposition": f'attachment; filename="jornada-{journey_id}.json"'
+                "Content-Disposition": f'attachment; filename="{filename}"'
             },
         )
 
     @app.post("/api/journey/discard", status_code=204)
-    def discard_journey():
-        store.discard_journey()
+    def discard_journey(data: JourneyConfirmation):
+        store.discard_journey(data.journey_id)
         return Response(status_code=204)
 
     @app.get("/api/authors")
@@ -119,7 +191,11 @@ def make_app(global_file: Path | None = None) -> FastAPI:
 
     @app.get("/api/articles")
     def articles():
-        return (store.get_journey() or {}).get("articles", [])
+        return store.get_available_articles() if store.get_journey() else []
+
+    @app.get("/api/inventory")
+    def inventory():
+        return store.get_inventory()
 
     @app.post("/api/articles", status_code=201)
     def add_article(data: ArticleInput):
@@ -140,12 +216,14 @@ def make_app(global_file: Path | None = None) -> FastAPI:
 
     @app.post("/api/orders", status_code=201)
     def create_order(data: OrderInput):
-        return store.save_order(data.author_id, [line.model_dump() for line in data.lines])
+        return store.save_order(
+            data.author_id, [line.model_dump() for line in data.lines], status=data.status,
+        )
 
     @app.put("/api/orders/{order_id}")
     def update_order(order_id: str, data: OrderInput):
         lines = [line.model_dump() for line in data.lines]
-        return store.save_order(data.author_id, lines, order_id)
+        return store.save_order(data.author_id, lines, order_id, status=data.status)
 
     @app.delete("/api/orders/{order_id}", status_code=204)
     def delete_order(order_id: str):
@@ -173,20 +251,43 @@ def make_app(global_file: Path | None = None) -> FastAPI:
         return web.dashboard(store)
 
     @app.get("/jornada", response_class=HTMLResponse)
-    def journey_page():
-        return web.journey_page(store)
+    def journey_page(request: Request):
+        pages = web.journey_article_pages(dict(request.query_params))
+        values = dict(request.query_params)
+        return web.journey_page(
+            store, article_pages=pages,
+            order_pages=journey_results.page_values(values, "orders"),
+            subtotal_pages=journey_results.page_values(values, "subtotals"),
+        )
 
     @app.get("/ordenes", response_class=HTMLResponse)
-    def orders_page(edit: str = ""):
-        return web.orders_page(store, edit_id=edit)
+    def orders_page(
+        edit: str = "", article: str = "", page: int = Query(default=1, ge=1), q: str = "",
+    ):
+        return web.orders_page(store, edit_id=edit, article_id=article, page=page, query=q)
 
     @app.get("/articulos", response_class=HTMLResponse)
-    def articles_page(edit: str = ""):
-        return web.articles_page(store, edit_id=edit)
+    def articles_page(
+        edit: str = "", q: str = "", category: str = "", subcategory: str = "",
+        page: int = Query(default=1, ge=1), sold_page: int = Query(default=1, ge=1),
+    ):
+        search = ArticleSearch(q, category, subcategory, page, sold_page)
+        return web.articles_page(store, edit_id=edit, search=search)
 
     @app.get("/registros", response_class=HTMLResponse)
-    def events_page():
-        return web.events_page(store)
+    def events_page(page: int = Query(default=1, ge=1)):
+        return web.events_page(store, page=page)
+
+    @app.get("/exportaciones", response_class=HTMLResponse)
+    def exports_page(journey_id: str):
+        try:
+            store.get_last_export(journey_id)
+        except DomainError as error:
+            return HTMLResponse(web.layout("Exportación no disponible", (
+                f'<p role="alert">{web.h(error)}</p>'
+                '<a class="button quiet" href="/">Volver al Dashboard</a>'
+            )), status_code=error.status)
+        return web.closed_journey_page(journey_id)
 
     @app.get("/confirmar/{action}", response_class=HTMLResponse)
     def confirm_page(action: str):
@@ -207,7 +308,7 @@ def make_app(global_file: Path | None = None) -> FastAPI:
             if action == "create":
                 store.create_journey(values.get("title", ""))
             elif action == "rename":
-                store.rename_journey(values.get("title", ""))
+                store.rename_journey(values.get("title", ""), values.get("journey_id", ""))
             elif action == "add_author":
                 store.add_author(values.get("name", ""))
             elif action == "rename_author":
@@ -218,19 +319,30 @@ def make_app(global_file: Path | None = None) -> FastAPI:
             elif action == "delete_author":
                 store.delete_author(values.get("author_id", ""))
             elif action == "close" and values.get("confirm") == "yes":
-                store.close_journey()
-                return HTMLResponse(web.closed_journey_page())
+                journey_id = values.get("journey_id", "")
+                store.close_journey(journey_id)
+                return RedirectResponse(
+                    "/exportaciones?" + urlencode({"journey_id": journey_id}),
+                    status_code=303,
+                )
             elif action == "discard" and values.get("confirm") == "yes":
-                store.discard_journey()
+                store.discard_journey(values.get("journey_id", ""))
             else:
                 raise DomainError("Acción no reconocida.")
             return RedirectResponse("/jornada", status_code=303)
         except DomainError as error:
-            return HTMLResponse(web.journey_page(store, str(error)), status_code=error.status)
+            rename_title = values.get("title", "") if values.get("action") == "rename" else None
+            return HTMLResponse(
+                web.journey_page(
+                    store, str(error), rename_title=rename_title, author_values=values,
+                ),
+                status_code=error.status,
+            )
 
     @app.post("/ui/articles")
     async def article_action(request: Request):
         values = await fields(request)
+        search = ArticleSearch.from_form(values)
         try:
             if values.get("action") == "delete":
                 store.delete_article(values.get("article_id", ""))
@@ -239,48 +351,80 @@ def make_app(global_file: Path | None = None) -> FastAPI:
                     key: values.get(key, "")
                     for key in ("name", "category", "subcategory", "unit_price")
                 }
+                inventory = store.get_inventory()
+                data["category"] = values.get("category_article", data["category"])
+                values["category"] = data["category"]
+                category = next(
+                    (item for item in inventory["categories"] if item["name"] == data["category"]),
+                    None,
+                )
+                if category is None:
+                    raise DomainError("Selecciona una categoría existente.")
+                position = inventory["categories"].index(category)
+                data["subcategory"] = values.get(
+                    f"subcategory_article_{position}", data["subcategory"],
+                )
+                values.update(category=data["category"], subcategory=data["subcategory"])
+                values["subcategories"] = {
+                    str(index): values.get(f"subcategory_article_{index}", "")
+                    for index in range(len(inventory["categories"]))
+                }
+                if not any(
+                    item["category_id"] == category["id"] and item["name"] == data["subcategory"]
+                    for item in inventory["subcategories"]
+                ):
+                    raise DomainError("Selecciona una subcategoría de esa categoría.")
                 if values.get("article_id"):
                     store.update_article(values["article_id"], data)
                 else:
                     store.add_article(data)
-            return RedirectResponse("/articulos", status_code=303)
+            return RedirectResponse(search.url() + "#article-results", status_code=303)
         except DomainError as error:
             return HTMLResponse(
-                web.articles_page(store, error=str(error)),
+                web.articles_page(
+                    store,
+                    edit_id=values.get("article_id", ""),
+                    error=str(error),
+                    values=values if values.get("action") != "delete" else None,
+                    search=search,
+                ),
                 status_code=error.status,
             )
+
+    def order_list_state(values: dict) -> dict:
+        try:
+            page = max(1, int(values.get("page", "1")))
+        except ValueError:
+            page = 1
+        return {
+            "page": page, "article_id": values.get("article", ""),
+            "query": values.get("q", ""),
+        }
 
     @app.post("/ui/orders/delete")
     async def order_delete(request: Request):
         values = await fields(request)
+        state = order_list_state(values)
         try:
             store.delete_order(values.get("order_id", ""))
-            return RedirectResponse("/ordenes", status_code=303)
+            return RedirectResponse(web.orders_url(**state) + "#order-results", status_code=303)
         except DomainError as error:
             return HTMLResponse(
-                web.orders_page(store, error=str(error)),
+                web.orders_page(store, error=str(error), **state),
                 status_code=error.status,
             )
 
     @app.post("/ui/orders/form")
     async def order_form(request: Request):
         values = await fields(request)
+        rows = None
+        state = order_list_state(values)
         try:
             count = int(values.get("count", "1"))
             if count < 1 or count > 50:
                 raise DomainError("Número de líneas inválido.")
-            keys = (
-                "catalog_id",
-                "name",
-                "category",
-                "subcategory",
-                "quantity",
-                "unit_price",
-            )
-            rows = [
-                {key: values.get(f"{key}_{index}", "") for key in keys}
-                for index in range(count)
-            ]
+            inventory = store.get_order_inventory(values.get("order_id", ""))
+            rows = order_form_rows(values, count, inventory)
             action = values.get("action", "")
             if action == "add":
                 if len(rows) == 50:
@@ -293,10 +437,11 @@ def make_app(global_file: Path | None = None) -> FastAPI:
             elif action == "save":
                 store.save_order(
                     values.get("author_id", ""),
-                    rows,
+                    order_form_lines(rows, inventory),
                     values.get("order_id") or None,
+                    status=values.get("order_status", "sale"),
                 )
-                return RedirectResponse("/ordenes", status_code=303)
+                return RedirectResponse(web.orders_url(**state) + "#order-results", status_code=303)
             else:
                 raise DomainError("Acción no reconocida.")
             page = web.orders_page(
@@ -304,10 +449,24 @@ def make_app(global_file: Path | None = None) -> FastAPI:
                 rows,
                 values.get("author_id", ""),
                 values.get("order_id", ""),
+                order_status=values.get("order_status", "sale"),
+                **state,
             )
             return HTMLResponse(page)
         except (DomainError, ValueError, IndexError) as error:
-            return HTMLResponse(web.orders_page(store, error=str(error)), status_code=400)
+            status = error.status if isinstance(error, DomainError) else 400
+            return HTMLResponse(
+                web.orders_page(
+                    store,
+                    rows=rows,
+                    author_id=values.get("author_id", ""),
+                    edit_id=values.get("order_id", ""),
+                    error=str(error),
+                    order_status=values.get("order_status", "sale"),
+                    **state,
+                ),
+                status_code=status,
+            )
 
     return app
 

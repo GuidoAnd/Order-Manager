@@ -6,4 +6,4 @@
 | Acciones cercanas con colores distintos | PASS |
 | Pruebas unitarias e integrales de v0.1 | PASS — 18 pruebas en 0.62 s |
 
-Comando: `.venv/bin/python -m pytest -q`. No se modificaron ni publicaron imágenes privadas.
+Comando: `.venv/bin/python -m pytest -q`.

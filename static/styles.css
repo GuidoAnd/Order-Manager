@@ -52,6 +52,76 @@ nav a:hover {
     text-decoration: underline;
 }
 
+.mobile-navigation {
+    display: none;
+}
+
+.top nav a {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: .5rem;
+    border-radius: 6px;
+}
+
+.top a:focus-visible, .mobile-navigation > summary:focus-visible,
+.article-actions > summary:focus-visible {
+    outline: 2px solid #76b7f1;
+    outline-offset: 3px;
+}
+
+.article-actions {
+    border: 0;
+    padding: 0;
+    min-width: 0;
+}
+
+.article-actions > summary {
+    min-height: 44px;
+    max-width: 100%;
+    list-style: none;
+}
+
+.article-actions > summary::-webkit-details-marker,
+.mobile-navigation > summary::-webkit-details-marker {
+    display: none;
+}
+
+.article-actions .row-actions {
+    margin-top: 1rem;
+}
+
+@media (max-width: 1023px) {
+    .top {
+        flex-wrap: wrap;
+        padding: 1rem;
+    }
+    .top .desktop-navigation {
+        display: none;
+    }
+    .mobile-navigation {
+        display: block;
+        width: 100%;
+        border: 0;
+        padding: 0;
+        min-width: 0;
+    }
+    .mobile-navigation > summary {
+        min-height: 44px;
+        width: fit-content;
+        max-width: 100%;
+        list-style: none;
+    }
+    .mobile-navigation nav {
+        flex-direction: column;
+        gap: .5rem;
+        margin-top: 1rem;
+    }
+    .mobile-navigation nav a {
+        background: #263e5b;
+    }
+}
+
 main {
     max-width: 1050px;
     margin: 2rem auto;
@@ -77,7 +147,7 @@ h1 {
 
 .grid, .metrics {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
     gap: 1rem;
 }
 
@@ -95,6 +165,16 @@ input, select {
     border-radius: 6px;
     margin-top: .3rem;
     font: inherit;
+    min-width: 0;
+    max-width: 100%;
+}
+
+h1, h2, h3, p, label, th, td, .button {
+    overflow-wrap: anywhere;
+}
+
+.panel, fieldset, .author-summary {
+    min-width: 0;
 }
 
 button, .button {
@@ -123,11 +203,126 @@ button:hover, .button:hover {
     color: #fff;
 }
 
+.add-article {
+    background: #237342;
+}
+
+.order-secondary {
+    min-height: 44px;
+    padding: .5rem .75rem;
+    font-size: .9rem;
+}
+
+.save-order {
+    min-height: 52px;
+    padding: .85rem 1.5rem;
+    font-weight: 600;
+}
+
+.article-source {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: .5rem .75rem;
+    margin-top: 1rem;
+}
+
+.article-source > input[type="radio"] {
+    align-self: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    margin: 0;
+    accent-color: #1c5d96;
+}
+
+.article-source > label {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: .5rem;
+    margin: 0;
+    cursor: pointer;
+}
+
+.inventory-fields, .new-article-fields {
+    display: none;
+    grid-column: 1 / -1;
+    min-width: 0;
+}
+
+.article-source > input[value="inventory"]:checked ~ .inventory-fields,
+.article-source > input[value="new"]:checked ~ .new-article-fields {
+    display: block;
+}
+
+.subcategory-choice {
+    display: none;
+}
+
+.order-line-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 1.5rem;
+}
+
+.actions.order-actions {
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
 .actions, .inline {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: .6rem;
+}
+
+.journey-name-editor {
+    border: 0;
+    padding: 0;
+}
+
+.journey-name-editor > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: .75rem;
+    list-style: none;
+}
+
+.journey-name-editor > summary::-webkit-details-marker {
+    display: none;
+}
+
+.journey-name-editor h2 {
+    flex: 1 1 140px;
+    min-width: 0;
+    margin: 0;
+}
+
+.journey-name-editor .button,
+.journey-name-editor button {
+    min-height: 44px;
+}
+
+.journey-name-editor > summary .button {
+    padding: .65rem .75rem;
+    font-size: .9rem;
+}
+
+.journey-name-editor > summary:focus-visible {
+    outline: 2px solid #1c5d96;
+    outline-offset: 4px;
+    border-radius: 6px;
+}
+
+.journey-name-editor form {
+    margin-top: 1rem;
+}
+
+.journey-name-editor .actions {
+    gap: 1rem;
 }
 
 .journey-final-actions {
@@ -143,6 +338,21 @@ button:hover, .button:hover {
 
 .row-actions form {
     margin: 0;
+}
+
+.article-search .actions, .order-search .actions, .pagination {
+    margin-top: 1.25rem;
+    gap: 1rem;
+}
+
+.article-search button, .article-search .button,
+.order-search button, .order-search .button,
+.pagination .button, .responsive-table button, .responsive-table .button {
+    min-height: 44px;
+}
+
+.responsive-table .row-actions {
+    gap: 1rem;
 }
 
 .inline input {
@@ -165,11 +375,56 @@ button:hover, .button:hover {
     gap: 1.5rem;
 }
 
+.author-disclosure {
+    border: 0;
+    padding: 0;
+    align-self: start;
+}
+
+.author-disclosure > summary {
+    width: fit-content;
+    max-width: 100%;
+    min-height: 44px;
+    list-style: none;
+}
+
+.author-disclosure > summary::-webkit-details-marker {
+    display: none;
+}
+
+.author-disclosure > summary:focus-visible {
+    outline: 2px solid #1c5d96;
+    outline-offset: 4px;
+}
+
+.author-disclosure form {
+    margin-top: 1rem;
+}
+
+.author-disclosure .actions {
+    gap: 1rem;
+}
+
+.author-disclosure button, .author-disclosure a.button {
+    min-height: 44px;
+}
+
+.author-editor .author-item + .author-item {
+    border-top: 1px solid #dce3ea;
+    padding-top: 1rem;
+    margin-top: 1rem;
+}
+
+.authors-registered:has(.author-editor[open]) > .author-names {
+    display: none;
+}
+
 .authors-layout h3 {
     margin-top: 0;
 }
 
 .authors-registered {
+    min-width: 0;
     background: #f5f8fb;
     border: 1px solid #d8e0e8;
     border-radius: 8px;
@@ -178,6 +433,10 @@ button:hover, .button:hover {
 
 .authors-registered .list {
     margin-bottom: 0;
+}
+
+.author-names li {
+    overflow-wrap: anywhere;
 }
 
 .author-actions {
@@ -190,6 +449,23 @@ button:hover, .button:hover {
 .author-name {
     flex: 1 1 150px;
     overflow-wrap: anywhere;
+}
+
+.author-summary + .author-summary {
+    border-top: 1px solid #dce3ea;
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+}
+
+details {
+    border: 1px solid #dce3ea;
+    border-radius: 8px;
+    padding: .75rem 1rem;
+}
+
+summary {
+    cursor: pointer;
+    font-weight: 600;
 }
 
 fieldset {
@@ -251,6 +527,46 @@ footer {
 }
 
 @media (max-width: 650px) {
+    .responsive-table {
+        overflow: visible;
+    }
+    .responsive-table table, .responsive-table tbody,
+    .responsive-table tr, .responsive-table td {
+        display: block;
+        width: 100%;
+        min-width: 0;
+    }
+    .responsive-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+    }
+    .responsive-table tr {
+        border: 1px solid #dce3ea;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        padding: .75rem;
+    }
+    .responsive-table td {
+        padding: .5rem 0;
+        border: 0;
+    }
+    .responsive-table td[data-label]::before {
+        content: attr(data-label);
+        display: block;
+        font-weight: 600;
+        color: #40566f;
+        margin-bottom: .25rem;
+    }
+    .order-actions {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .save-order {
+        width: 100%;
+    }
     .top {
         align-items: flex-start;
         flex-direction: column;
@@ -267,6 +583,158 @@ footer {
         width: 100%;
     }
     .authors-layout {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
+}
+
+
+@media (max-width: 650px) {
+    #article-results .actions, #article-results .pagination,
+    #article-results .row-actions, #article-editor .actions {
+        justify-content: center;
+        align-items: center;
+    }
+    #article-results td[data-label="Acciones"] {
+        text-align: center;
+    }
+    #article-editor button {
+        min-height: 44px;
+    }
+}
+
+.order-actions-menu {
+    border: 0;
+    padding: 0;
+    min-width: 0;
+}
+
+.order-actions-menu > summary, .subtotal-orders > summary {
+    min-height: 44px;
+    max-width: 100%;
+    list-style: none;
+}
+
+.order-actions-menu > summary::-webkit-details-marker,
+.subtotal-orders > summary::-webkit-details-marker {
+    display: none;
+}
+
+.order-actions-menu > summary:focus-visible,
+.subtotal-orders > summary:focus-visible {
+    outline: 2px solid #1c5d96;
+    outline-offset: 3px;
+}
+
+.order-actions-menu .row-actions {
+    margin-top: 1rem;
+    gap: 1rem;
+}
+
+.order-actions-menu button {
+    min-height: 44px;
+}
+
+.subtotal-orders {
+    border: 0;
+    padding: 0;
+}
+
+.subtotal-orders li {
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 650px) {
+    #order-results .row-actions,
+    #order-results td[data-label="Acciones"] {
+        text-align: center;
+        align-items: center;
+    }
+}
+
+.order-status-options,
+.export-options {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: .5rem .75rem;
+}
+
+.order-status-options input[type="radio"],
+.export-options input[type="radio"] {
+    align-self: center;
+    width: 22px;
+    height: 22px;
+    margin: 0;
+    padding: 0;
+    accent-color: #1c5d96;
+}
+
+.order-status-options label {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    margin: 0;
+    cursor: pointer;
+}
+
+.export-options label {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 44px;
+    margin: 0;
+    padding: .5rem 0;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+}
+
+.export-form .actions {
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.export-downloads {
+    border: 0;
+    padding: 0;
+    margin-top: 1rem;
+    min-width: 0;
+}
+
+.export-downloads > summary {
+    min-height: 44px;
+    max-width: 100%;
+    list-style: none;
+}
+
+.export-downloads > summary::-webkit-details-marker {
+    display: none;
+}
+
+.export-downloads .export-form {
+    margin-top: 1rem;
+}
+
+@media (max-width: 650px) {
+    .export-form .actions {
+        justify-content: center;
+    }
+}
+
+.not-billed-note {
+    display: none;
+}
+
+.order-form:has(input[name="order_status"][value="not_billed"]:checked) .line-price {
+    display: none;
+}
+
+.order-form:has(input[name="order_status"][value="not_billed"]:checked) .not-billed-note {
+    display: block;
+}
+
+.order-state {
+    display: block;
+    margin-top: .5rem;
+    color: #68410a;
+    font-weight: 600;
+    overflow-wrap: anywhere;
 }
