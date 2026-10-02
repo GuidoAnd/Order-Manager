@@ -354,13 +354,18 @@ async def run_mobile_workflow(tmp_path, viewport):
             await page.get_by_role("link", name="Cerrar y contabilizar ventas").click()
             journey_id = await page.locator('input[name="journey_id"]').input_value()
             await assert_layout(page, viewport)
+            await page.get_by_role("button", name="Cerrar ventas y elegir descarga CSV / JSON / ZIP").click()
+            await page.get_by_role("heading", name="Jornada cerrada", exact=True).wait_for()
+            await assert_layout(page, viewport)
+            await page.get_by_role("radio", name="JSON completo").check()
             async with page.expect_download() as download_info:
-                await page.get_by_role("button", name="Cerrar ventas y contabilizarlas").click()
+                await page.get_by_role("button", name="Descargar", exact=True).click()
             download = await download_info.value
             assert await download.failure() is None
             exported = json.loads(Path(await download.path()).read_text())
             assert exported["id"] == journey_id
             assert exported["statistics"]["revenue"] == 16100
+            await page.get_by_role("link", name="Volver al Dashboard", exact=True).click()
             await page.get_by_role("heading", name="Dashboard", exact=True).wait_for()
             assert app.state.store.get_journey() is None
             assert app.state.store.get_globals()["revenue"] == 16100

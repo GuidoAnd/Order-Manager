@@ -38,8 +38,30 @@ def article_statistics_name(key: str) -> str:
     return re.sub(r"\\([\\/])", r"\1", key.split(" / ")[-1])
 
 
-def export_url(journey_id: str) -> str:
-    return "/api/exports/last?" + urlencode({"journey_id": journey_id})
+def download_form(journey_id: str) -> str:
+    options = (
+        ("csv_summary", "CSV resumen", "Cantidades por categoría, con artículos en columnas."),
+        ("csv_detail", "CSV detallado", "Una fila por artículo con unidades e importe."),
+        ("json", "JSON completo", "Órdenes, registros y datos de la jornada."),
+        ("zip", "Todo en ZIP", "Los dos CSV y el JSON en una sola descarga."),
+    )
+    radios = "".join(
+        f'<input type="radio" name="format" id="export-{value}" value="{value}"'
+        + (' checked' if value == "zip" else '') + '>'
+        + f'<label for="export-{value}"><strong>{label}</strong><span>{description}</span></label>'
+        for value, label, description in options
+    )
+    return f"""<form class="export-form" method="get" action="/api/exports/last">
+        <input type="hidden" name="journey_id" value="{h(journey_id)}">
+        <fieldset>
+            <legend>Elegir archivo para descargar</legend>
+            <div class="export-options">{radios}</div>
+        </fieldset>
+        <div class="actions">
+            <button type="submit">Descargar</button>
+            <a class="button quiet" href="/">Volver al Dashboard</a>
+        </div>
+    </form>"""
 
 
 def stylesheet_url() -> str:
@@ -250,6 +272,7 @@ def journey_page(
                 <span class="button quiet">Editar nombre</span>
             </summary>
             <form method="post" action="/ui/journey">
+                <input type="hidden" name="journey_id" value="{h(journey['id'])}">
                 <label>Nombre de la jornada
                     <input name="title" value="{h(title_value)}" required maxlength="120">
                 </label>
@@ -341,7 +364,7 @@ def _taxonomy_fields(index: int | str, row: dict, inventory: dict) -> str:
     category_options = []
     subcategory_fields = []
     for position, category in enumerate(inventory["categories"]):
-        selected = " selected" if row.get("category") == category["name"] else ""
+        selected = " selected" if row.get("category", "").casefold() == category["name"].casefold() else ""
         category_options.append(
             f'<option value="{h(category["name"])}"{selected}>'
             f'{h(category["name"])}</option>'
@@ -353,7 +376,7 @@ def _taxonomy_fields(index: int | str, row: dict, inventory: dict) -> str:
         for subcategory in inventory["subcategories"]:
             if subcategory["category_id"] != category["id"]:
                 continue
-            checked = " selected" if current == subcategory["name"] else ""
+            checked = " selected" if current.casefold() == subcategory["name"].casefold() else ""
             options.append(
                 f'<option value="{h(subcategory["name"])}"{checked}>'
                 f'{h(subcategory["name"])}</option>'
@@ -639,7 +662,7 @@ def orders_page(
         for author in journey["authors"]
     )
     available_articles = store.get_available_articles()
-    inventory = store.get_inventory()
+    inventory = store.get_order_inventory(selected_order["id"] if selected_order else "")
     line_cards = "\n".join(
         _order_line(index, row, available_articles, inventory)
         for index, row in enumerate(rows)
@@ -839,8 +862,8 @@ def _article_page_styles() -> str:
     </style>"""
 
 
-def _article_results(available: list[dict], search: ArticleSearch, page_size: int) -> str:
-    articles, total, page, pages = search.results(available, page_size=page_size)
+def _article_results(matches: list[dict], search: ArticleSearch, page_size: int) -> str:
+    articles, total, page, pages = search.paginate(matches, page_size=page_size)
     rows = "\n".join(
         _temporary_article_row(article) if article.get("temporary")
         else _article_row(article, search, page)
@@ -885,7 +908,8 @@ def _article_browser(store: Store, search: ArticleSearch) -> str:
         )
         subcategories.append(f'<optgroup label="{h(category["name"])}">{options}</optgroup>')
     available = store.get_available_articles()
-    results = "\n".join(_article_results(available, search, size) for size in (5, 4, 3, 2))
+    matches = search.matching(available)
+    results = "\n".join(_article_results(matches, search, size) for size in (5, 4, 3, 2))
     return f"""<form class="article-search" method="get" action="/articulos#article-results">
         <input type="hidden" name="sold_page" value="{h(search.sold_page)}">
         <label>Buscar por nombre
@@ -1004,10 +1028,10 @@ def events_page(store: Store, page: int = 1) -> str:
     )
     try:
         journey_id, _payload = store.get_last_export()
-        download = (
-            f'<p><a class="button" href="{h(export_url(journey_id))}">'
-            'Descargar último JSON exportado</a></p>'
-        )
+        download = f"""<details class="export-downloads">
+            <summary class="button quiet">Descargar última jornada</summary>
+            {download_form(journey_id)}
+        </details>"""
     except DomainError:
         download = ""
 
@@ -1030,7 +1054,10 @@ def confirm_page(store: Store, action: str) -> str:
     closing = action == "close"
     if closing:
         title = "Cerrar y contabilizar ventas"
-        effect = "Se descargará un JSON y las ventas se agregarán a las estadísticas globales."
+        effect = (
+            "Las ventas se agregarán a las estadísticas globales. Después podrás "
+            "elegir CSV resumen, CSV detallado, JSON completo o todo en ZIP."
+        )
     else:
         title = "Descartar jornada sin contabilizar ventas"
         effect = (
@@ -1039,7 +1066,7 @@ def confirm_page(store: Store, action: str) -> str:
         )
     button_class = "" if closing else "danger"
     button_label = (
-        "Cerrar ventas y contabilizarlas"
+        "Cerrar ventas y elegir descarga CSV / JSON / ZIP"
         if closing else f"Confirmar: {title}"
     )
 
@@ -1058,12 +1085,11 @@ def confirm_page(store: Store, action: str) -> str:
 
 
 def closed_journey_page(journey_id: str) -> str:
-    download = h(export_url(journey_id))
     body = f"""<section class="panel">
         <p>La jornada se cerró y sus ventas se contabilizaron.</p>
-        <p>La descarga del JSON comenzará automáticamente.</p>
-        <p>Si no comienza, <a href="{download}">descargar JSON</a>.</p>
-        <iframe src="{download}" title="Descarga de la jornada" hidden></iframe>
+        <p>Podés descargar más de un formato, uno por vez, o elegir todo en ZIP.
+           La última jornada cerrada también está disponible en Registros durante
+           esta ejecución, hasta que cierres otra jornada.</p>
+        {download_form(journey_id)}
     </section>"""
-    refresh = '<meta http-equiv="refresh" content="2;url=/">'
-    return layout("Jornada cerrada", body, refresh)
+    return layout("Jornada cerrada", body)

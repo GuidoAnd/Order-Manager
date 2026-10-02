@@ -15,10 +15,27 @@ from .journey_export import build_export
 from .seed_inventory import initial_inventory
 
 
+MAX_INPUT_INTEGER = 2**63 - 1
+
+
 class DomainError(Exception):
     def __init__(self, message: str, status: int = 400):
         super().__init__(message)
         self.status = status
+
+
+def bounded_integer(value: object, minimum: int, message: str) -> int:
+    try:
+        if isinstance(value, bool) or not str(value).isdecimal():
+            raise DomainError(message)
+        number = int(value)
+    except ValueError:
+        raise DomainError(f"{message} Máximo permitido: {MAX_INPUT_INTEGER}.") from None
+    if number < minimum:
+        raise DomainError(message)
+    if number > MAX_INPUT_INTEGER:
+        raise DomainError(f"{message} Máximo permitido: {MAX_INPUT_INTEGER}.")
+    return number
 
 
 def now() -> str:
@@ -167,6 +184,16 @@ class Store:
         with self.lock:
             return deepcopy(self.inventory)
 
+    def get_order_inventory(self, order_id: str = "") -> dict:
+        """Incluye las categorías originales solo al editar su orden."""
+        with self.lock:
+            inventory = deepcopy(self.inventory)
+            if order_id:
+                order = self._find(self._active()["orders"], order_id, "Orden")
+                for line in order["lines"]:
+                    self._register_taxonomy(inventory, deepcopy(line))
+            return inventory
+
     def get_available_articles(self) -> list[dict]:
         with self.lock:
             journey = self._active()
@@ -233,12 +260,13 @@ class Store:
             self._event("journey_created", title)
             return deepcopy(self.journey)
 
-    def rename_journey(self, title: str) -> dict:
+    def rename_journey(self, title: str, expected_id: str | None = None) -> dict:
         with self.lock:
+            journey = self._active(expected_id)
             title = title.strip()
             if not title:
                 raise DomainError("El nombre de la jornada es obligatorio.")
-            self._active()["title"] = title
+            journey["title"] = title
             self._event("journey_renamed", title)
             return deepcopy(self.journey)
 
@@ -306,11 +334,7 @@ class Store:
         raw_price = data.get("unit_price")
         if allow_empty_price and raw_price in (None, ""):
             return {**values, "unit_price": None}
-        if isinstance(raw_price, bool) or not str(raw_price).isdecimal():
-            raise DomainError("El precio debe ser un número natural.")
-        price = int(raw_price)
-        if price < 0:
-            raise DomainError("El precio debe ser un número natural.")
+        price = bounded_integer(raw_price, 0, "El precio debe ser un número natural.")
         return {**values, "unit_price": price}
 
     @staticmethod
@@ -324,17 +348,22 @@ class Store:
         if category is None:
             category = {"id": str(uuid4()), "name": category_name}
             inventory["categories"].append(category)
+        article["category"] = category["name"]
         subcategory_name = article["subcategory"]
-        if not any(
-            item["category_id"] == category["id"]
-            and item["name"].casefold() == subcategory_name.casefold()
-            for item in inventory["subcategories"]
-        ):
-            inventory["subcategories"].append({
+        subcategory = next(
+            (item for item in inventory["subcategories"]
+             if item["category_id"] == category["id"]
+             and item["name"].casefold() == subcategory_name.casefold()),
+            None,
+        )
+        if subcategory is None:
+            subcategory = {
                 "id": str(uuid4()),
                 "name": subcategory_name,
                 "category_id": category["id"],
-            })
+            }
+            inventory["subcategories"].append(subcategory)
+        article["subcategory"] = subcategory["name"]
 
     def update_article(self, article_id: str, data: dict) -> dict:
         with self.lock:
@@ -344,8 +373,8 @@ class Store:
             previous_price = item["unit_price"]
             inventory = deepcopy(self.inventory)
             stored = self._find(inventory["articles"], article_id, "Artículo")
+            self._register_taxonomy(inventory, updated)
             stored.update(updated)
-            self._register_taxonomy(inventory, stored)
             self._write_inventory(inventory)
             self.inventory = inventory
             item.update(updated)
@@ -382,17 +411,17 @@ class Store:
         if len(lines) > 50:
             raise DomainError("La orden admite hasta 50 líneas.")
         output = []
+        available = None
         for row in lines:
-            raw_quantity = row.get("quantity")
-            if isinstance(raw_quantity, bool) or not str(raw_quantity).isdecimal():
-                raise DomainError("La cantidad debe ser un entero positivo.")
-            quantity = int(raw_quantity)
-            if quantity < 1:
-                raise DomainError("La cantidad debe ser un entero positivo.")
+            quantity = bounded_integer(
+                row.get("quantity"), 1, "La cantidad debe ser un entero positivo.",
+            )
             if row.get("catalog_id"):
-                article = self._find(
-                    self.get_available_articles(), row["catalog_id"], "Artículo"
-                )
+                if available is None:
+                    available = {item["id"]: item for item in self.get_available_articles()}
+                article = available.get(row["catalog_id"])
+                if article is None:
+                    raise DomainError("Artículo no encontrado.", 404)
                 data = {
                     key: article[key]
                     for key in ("name", "category", "subcategory", "unit_price")
@@ -404,6 +433,8 @@ class Store:
                         **data,
                         "unit_price": row.get("unit_price"),
                     })
+                else:
+                    data = self._article_data(data)
             else:
                 data = self._article_data(
                     {**row, "unit_price": None} if not_billed else row,

@@ -14,7 +14,7 @@ from order_manager.store import Store, article_statistics_key, fresh_globals
 from order_manager.web import article_statistics_label, articles_page
 
 
-def request(app, method, url, values=None, *, form=False):
+def request(app, method, url, values=None, *, form=False, raw=False):
     content_type = "application/x-www-form-urlencoded" if form else "application/json"
     body = urlencode(values) if form else json.dumps(values)
     body = body.encode() if values is not None else b""
@@ -45,7 +45,7 @@ def request(app, method, url, values=None, *, form=False):
     start = next(message for message in messages if message["type"] == "http.response.start")
     response = b"".join(message.get("body", b"") for message in messages)
     headers = {key.decode(): value.decode() for key, value in start["headers"]}
-    return start["status"], headers, response.decode()
+    return start["status"], headers, response if raw else response.decode()
 
 
 @pytest.fixture
@@ -88,7 +88,7 @@ def test_old_or_missing_confirmation_preserves_current_journey(
     assert not store.global_file.exists()
 
     status, _, _ = confirm(active_app, action, current["id"], interface)
-    assert status == (303 if interface == "ui" and action == "discard"
+    assert status == (303 if interface == "ui"
                       else 204 if action == "discard" else 200)
     assert store.get_journey() is None
 
@@ -192,16 +192,19 @@ def test_invalid_order_source_or_category_keeps_journey_intact(active_app, chang
 def test_closed_page_download_never_returns_another_journey(active_app):
     store = active_app.state.store
     first_id = store.get_journey()["id"]
-    status, _, page = confirm(active_app, "close", first_id, "ui")
-    assert status == 200
-    download_url = unescape(re.search(r'<iframe src="([^"]+)"', page).group(1))
+    status, headers, _ = confirm(active_app, "close", first_id, "ui")
+    assert status == 303
+    status, _, page = request(active_app, "GET", headers["location"])
+    assert status == 200 and 'class="export-form"' in page
+    assert '<iframe' not in page and 'http-equiv="refresh"' not in page
+    download_url = f"/api/exports/last?journey_id={first_id}"
     assert f"journey_id={first_id}" in download_url
     status, headers, body = request(active_app, "GET", download_url)
     assert status == 200
     assert first_id in headers["content-disposition"]
     assert json.loads(body)["id"] == first_id
     _, _, events_page = request(active_app, "GET", "/registros")
-    assert download_url in events_page
+    assert f'name="journey_id" value="{first_id}"' in events_page
 
     second = store.create_journey("Jornada B")
     confirm(active_app, "close", second["id"], "api")
@@ -245,7 +248,7 @@ def test_failed_close_keeps_data_and_can_retry_once(active_app, monkeypatch, int
     assert not list(store.global_file.parent.glob("*.tmp"))
 
     status, _, _ = confirm(active_app, "close", journey["id"], interface)
-    assert status == 200
+    assert status == (303 if interface == "ui" else 200)
     assert store.get_journey() is None
     assert store.get_globals()["journeys"] == 2
     assert store.get_globals()["revenue"] == 300

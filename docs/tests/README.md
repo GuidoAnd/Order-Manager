@@ -1,6 +1,6 @@
 # Resultados de pruebas por versión
 
-Actualizado: **2026-10-01T18:10:54Z** (UTC).
+Actualizado: **2026-10-02T13:55:35Z** (UTC).
 
 Los informes se agrupan según la versión evaluada. Cada archivo conserva su
 fecha UTC, alcance y resultado PASS/FAIL. Son registros históricos: sus cantidades
@@ -9,7 +9,7 @@ no se suman ni implican que una versión en desarrollo esté terminada.
 | Versión | Directorio | Resumen de resultados |
 | --- | --- | --- |
 | v0.1 | [v0_1/](v0_1/) | Revisión final PASS: 22 pruebas funcionales e integrales de jornadas, autores, órdenes, artículos, estadísticas y cierre JSON. |
-| v0.2, en desarrollo | [v0_2/](v0_2/) | Última ejecución PASS: 184 pruebas, incluidas 60 de navegador desde 320 px. Cubre el flujo completo, el menú adaptable, las acciones de artículos, los editores desplegables, la búsqueda y la paginación de artículos y órdenes, y las tablas de Jornada con subtotales, números reales y distribución compartida por autor. Incluye catálogo vendido y Registros paginados, y el nuevo formato JSON con altas, cambios de precio y ventas. Valida órdenes no facturadas para regalos/cancelaciones y su exclusión contable. |
+| v0.2, revisión final | [v0_2/](v0_2/) | Suite completa: 285 PASS (215 unitarias/integrales y 70 de navegador), en 205,96 s. Incluye flujo principal, interfaz desde 320 px, exportación JSON/dos CSV/ZIP y regresiones de validación numérica, formularios antiguos y categorías. |
 
 ## v0.1
 
@@ -24,7 +24,12 @@ no se suman ni implican que una versión en desarrollo esté terminada.
 ## v0.2
 
 Incluye las comprobaciones de transición posteriores a la revisión de v0.1 y
-los avances de la versión actual.
+las funcionalidades y correcciones de la versión actual.
+
+- [Revisión final de v0.2: 285 PASS](v0_2/V0_2_FINAL_REVIEW_20261002T133719Z.md).
+- El mismo informe registra 120 regresiones PASS tras fijar los metadatos de API
+  y OpenAPI a `0.2`.
+- [Auditoría de errores y optimización](../audits/ERRORES_OPTIMIZACION_20261002T052323Z.md).
 
 - [Catálogo vendido](v0_2/SOLD_CATALOG_20260929T150059Z.md).
 - [Entrada ASGI](v0_2/ROOT_API_ENTRYPOINT_20260929T151500Z.md).
@@ -53,6 +58,10 @@ los avances de la versión actual.
 - [Catálogo vendido y Registros](v0_2/SOLD_CATALOG_RECORDS_PAGES_20261001T172405Z.md).
 
 - [Órdenes no facturadas](v0_2/NOT_BILLED_ORDERS_20261001T181054Z.md).
+
+- [CSV y selección de descargas](v0_2/CSV_DOWNLOAD_CHOICES_20261002T044931Z.md).
+
+- [Descargas compactas en Registros](v0_2/RECORDS_DOWNLOAD_COLLAPSE_20261002T050541Z.md).
 
 Las pruebas de navegador documentadas usan Chromium emulado; sus resultados no
 constituyen validación en dispositivos físicos o en otros motores.

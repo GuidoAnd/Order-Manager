@@ -1,8 +1,13 @@
-# Arquitectura de Order Manager — v0.2 en desarrollo
+# Arquitectura de Order Manager — v0.2
 
 ## Propósito
 
 Aplicación web para que un supervisor gestione jornadas, autores, órdenes y ventas. La v0.2 continúa el MVP integrado; v1.0 será la versión final prevista.
+
+El alcance implementado y su revisión final se describen en el
+[resumen de v0.2](version/v0_2.md). La publicación se registra por separado.
+La [validación final](tests/v0_2/V0_2_FINAL_REVIEW_20261002T133719Z.md)
+confirmó 285 pruebas PASS, incluidas 70 de navegador.
 
 ## Componentes y datos
 
@@ -18,7 +23,7 @@ entrada en la raíz del repositorio.
 - **Órdenes y artículos:** cada orden pertenece a un autor y admite varias líneas de artículos con cantidad y precio unitario. El backend calcula los subtotales y el total. Se pueden consultar, modificar y eliminar órdenes. El catálogo inicial reúne categorías, subcategorías y productos persistentes; el formulario los agrupa para seleccionarlos. Los artículos creados en órdenes se ofrecen temporalmente para nuevas órdenes mientras alguna orden vigente los facture.
 - **Artículos vendidos:** la sección Artículos muestra el «Catálogo vendido de la jornada», calculado desde las órdenes actuales y ordenado por unidades vendidas. Los artículos disponibles para nuevas órdenes se administran en una lista separada.
 - **Ventas y estadísticas:** las cantidades de las órdenes suman unidades vendidas; el inventario inicial es un catálogo sin existencias físicas. Las órdenes, totales y artículos facturados se muestran por autor, además de los totales de jornada. Los acumulados globales conservan jornadas cerradas, órdenes, unidades e importe, con desglose por artículo y categoría.
-- **Registros y exportación:** se registran acciones relevantes del supervisor y se exportan los datos de la jornada en JSON.
+- **Registros y exportación:** se registran acciones relevantes del supervisor y se exporta la jornada en JSON y dos CSV, individualmente o juntos en ZIP.
 
 ## Persistencia del catálogo
 
@@ -31,6 +36,10 @@ Los artículos creados dentro de órdenes se derivan de las órdenes actuales:
 desaparecen de las opciones al borrar o modificar su última orden. Si la
 jornada se cierra correctamente, permanecen en el JSON exportado y en los
 acumulados globales de ventas.
+
+Las altas y ediciones del catálogo reutilizan la escritura de categorías y
+subcategorías existentes cuando los nombres solo difieren en mayúsculas.
+Esto mantiene coherentes los artículos, los filtros y los desplegables.
 
 ## Formulario de órdenes
 
@@ -45,6 +54,24 @@ solo sus campos activos. Una selección previa del inventario no sustituye al
 producto nuevo ni le transfiere su precio. Los formularios se validan en el servidor
 para evitar que un campo oculto bloquee el envío. Agregar o quitar líneas conserva
 los datos del formulario; guardar una orden conserva su copia del precio usado.
+
+Al editar una orden, los desplegables también admiten las categorías y
+subcategorías originales de sus líneas, aunque hayan llegado por la API y no
+pertenezcan al catálogo inicial. Estas opciones se agregan a una copia para ese
+editor; no se incorporan al inventario persistente. Las altas desde el formulario
+siguen usando las categorías disponibles del catálogo.
+
+Las cantidades y precios rechazan booleanos y tienen un máximo técnico común
+de `9223372036854775807` por campo (`2^63 - 1`). Se valida antes de guardar,
+tanto en la API como en la lógica usada por los formularios. Se conservan las
+cantidades positivas, los precios naturales y los precios nulos donde están
+permitidos. Este límite evita que una entrada extrema impida calcular promedios
+o cerrar la jornada; los subtotales y totales siguen calculándose con enteros.
+
+Al guardar una orden se obtiene una sola vez el catálogo disponible, únicamente
+si alguna línea lo usa. La consulta se reutiliza por identificador durante esa
+operación, bajo el bloqueo de la jornada; se reconstruye en el siguiente guardado
+para respetar cambios de precios y la disponibilidad de artículos temporales.
 
 En móvil, las acciones finales se apilan y separan. «Guardar orden» ocupa el ancho
 disponible y tiene mayor tamaño que «Agregar artículo» (verde) y «Quitar artículo»
@@ -98,6 +125,10 @@ externa antigua no muestre las cuatro vistas. La URL del CSS incluye un hash de
 su contenido y cambia al actualizar los estilos. Cada vista permite recorrer
 todos los resultados. La búsqueda no distingue mayúsculas ni acentos; sus filtros
 se conservan al cambiar de página, editar, guardar o eliminar un artículo del catálogo.
+
+La búsqueda filtra y ordena una vez por petición; las cuatro presentaciones
+responsive paginan esos mismos resultados. No se conserva una caché entre
+peticiones y se mantiene la interfaz de consulta `ArticleSearch.results`.
 
 El catálogo vendido se pagina de 2 a 5 filas según el ancho, con
 Anterior/Siguiente y fichas en móvil. Su página es independiente de los artículos
@@ -157,6 +188,11 @@ y fecha de apertura. Cancelar vuelve a la sección sin modificar datos.
 La validación conserva el texto ingresado y mantiene abierto el editor ante
 un error. Las jornadas cerradas no pueden renombrarse.
 
+El formulario incluye el identificador de la jornada mostrada. Al guardar se
+comprueba ese identificador bajo el mismo bloqueo que protege el renombrado;
+un formulario de otra jornada o sin identificador devuelve `409` y conserva
+el nombre, los eventos y los demás datos de la jornada actual.
+
 ## Gestión de autores
 
 Los nombres registrados permanecen visibles con los formularios cerrados.
@@ -188,7 +224,9 @@ Los movimientos de la jornada activa se muestran del más reciente al más antig
 con 2 a 5 filas por página según el ancho y Anterior/Siguiente. En móvil se presentan
 como fichas con Fecha, Acción y Detalle. La paginación no añade eventos ni modifica
 su contenido; la exportación incluye todos los registros de la jornada.
-El acceso al último JSON permanece separado del listado paginado.
+El selector de descarga de la última jornada cerrada permanece separado del listado paginado.
+En Registros se presenta dentro de «Descargar última jornada», un desplegable
+cerrado por defecto. Se abre o cierra con toque o teclado, sin afectar los archivos.
 
 ## Cierre y descarte
 
@@ -199,19 +237,54 @@ además de `new_articles` y `price_changes`. Excluye la copia del inventario ini
 y el contador interno. Cada línea de venta conserva su cantidad, precio y subtotal;
 los cambios posteriores de catálogo no modifican esos valores. La actividad de
 altas y precios se registra en memoria tras confirmar el guardado y se conserva
-si el cierre falla. El [formato de descarga](versions/v0_2.md) detalla los campos.
+si el cierre falla. El [formato de descarga](version/v0_2.md#json-descargado) detalla los campos.
 
-Tras confirmar el cierre en la interfaz, una página transitoria solicita la descarga de la última exportación y redirige al Dashboard. También ofrece un enlace para repetir la descarga durante la misma ejecución.
+Tras confirmar el cierre, la interfaz redirige mediante GET a un selector con
+radios: CSV resumen, CSV detallado, JSON completo y Todo en ZIP. El usuario
+descarga la opción elegida y puede volver al Dashboard. No hay descarga ni
+redirección automática. Registros ofrece el mismo selector. Recargar esa página
+o repetir la descarga no vuelve a contabilizar ventas.
+
+`order_manager/export_formats.py` construye los formatos a demanda desde el JSON
+del cierre, sin consultar la jornada activa ni alterar los acumulados. El resumen
+presenta nombres y unidades en dos filas por categoría; el detallado tiene columnas
+estables de categoría, subcategoría, artículo, unidades e importe. Los dos agregan
+las ventas de todos los autores y excluyen órdenes no facturadas y productos sin
+ventas. Las líneas guardadas determinan las cantidades y los importes.
+
+Los CSV usan UTF-8 con BOM, punto y coma y CRLF. El ZIP contiene exactamente
+los dos CSV y el JSON. Se generan con la biblioteca estándar de Python.
+`/api/exports/last` mantiene JSON por defecto y acepta `format` para los demás
+formatos. El ID de jornada impide entregar otra exportación cuando la anterior
+fue reemplazada. La última descarga se conserva hasta el siguiente cierre
+correcto o el reinicio; no es un historial persistente.
 
 «Descartar jornada sin contabilizar ventas» elimina sus datos temporales sin aumentar las estadísticas globales. Ambas acciones requieren confirmaciones claras y diferentes para evitar errores.
 
 ## Evolución prevista
 
-El supervisor opera la plataforma sin autenticación. La autenticación y la persistencia de permisos se abordarán en una actualización menor posterior. CSV sigue previsto para v0.2; MariaDB se evaluará después de v1.0.
+El supervisor opera la plataforma sin autenticación. La autenticación y la persistencia de permisos se abordarán en una actualización menor posterior. MariaDB se evaluará después de v1.0.
+
+Jinja2 queda prevista para v0.3. En v0.2 el HTML se construye desde Python y
+la presentación adaptable usa CSS y controles nativos de HTML.
+
+## Límites de ejecución
+
+El estado temporal y el bloqueo `RLock` pertenecen a un único proceso. La
+aplicación requiere una sola instancia y un solo worker; varias instancias o
+workers no compartirían la jornada ni coordinarían las escrituras locales.
+El directorio `data/` necesita permisos de escritura. Reiniciar elimina la
+jornada activa y la última exportación, pero conserva catálogo y acumulados.
+
+Los archivos descargados contienen una jornada completa; la aplicación no
+mantiene un archivo histórico persistente de órdenes ni exportaciones. Los
+acumulados globales son resúmenes de ventas. La validación de navegador usa
+Chromium emulado desde 320 px; no acredita dispositivos físicos ni otros motores.
 
 ## Decisiones técnicas
 
 - [FastAPI como servidor](decisions/ADR-001-FastApi.md).
 - [Persistencia local en JSON](decisions/ADR-002-Json-persistance.md).
-- [Exportación CSV prevista](decisions/ADR-003-csv-export.md).
+- [Exportación CSV](decisions/ADR-003-csv-export.md).
 - [Pruebas funcionales en móviles](decisions/ADR-004-mobile-testing.md).
+- [Estructura CSV y selección de descargas](decisions/ADR-005-csv-formats-downloads.md).

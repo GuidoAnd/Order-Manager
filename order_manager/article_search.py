@@ -54,9 +54,7 @@ class ArticleSearch:
     def url(self, *, page: int | None = None) -> str:
         return "/articulos?" + urlencode(self.fields(page=page))
 
-    def results(self, articles: list[dict], *, page_size: int = PAGE_SIZE) -> tuple[list[dict], int, int, int]:
-        if page_size not in (2, 3, 4, 5):
-            raise ValueError("El tamaño de página debe estar entre 2 y 5.")
+    def matching(self, articles: list[dict]) -> list[dict]:
         query = searchable(self.query.strip())
         matches = [
             article for article in articles
@@ -67,7 +65,15 @@ class ArticleSearch:
         matches.sort(key=lambda article: (
             searchable(article["name"]), article_identity(article), article["id"],
         ))
+        return matches
+
+    def paginate(self, matches: list[dict], *, page_size: int = PAGE_SIZE) -> tuple[list[dict], int, int, int]:
+        if page_size not in (2, 3, 4, 5):
+            raise ValueError("El tamaño de página debe estar entre 2 y 5.")
         pages = max(1, (len(matches) + page_size - 1) // page_size)
         page = min(max(1, self.page), pages)
         start = (page - 1) * page_size
         return matches[start:start + page_size], len(matches), page, pages
+
+    def results(self, articles: list[dict], *, page_size: int = PAGE_SIZE) -> tuple[list[dict], int, int, int]:
+        return self.paginate(self.matching(articles), page_size=page_size)

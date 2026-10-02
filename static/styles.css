@@ -651,13 +651,15 @@ footer {
     }
 }
 
-.order-status-options {
+.order-status-options,
+.export-options {
     display: grid;
     grid-template-columns: 24px minmax(0, 1fr);
     gap: .5rem .75rem;
 }
 
-.order-status-options input[type="radio"] {
+.order-status-options input[type="radio"],
+.export-options input[type="radio"] {
     align-self: center;
     width: 22px;
     height: 22px;
@@ -672,6 +674,49 @@ footer {
     min-height: 44px;
     margin: 0;
     cursor: pointer;
+}
+
+.export-options label {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 44px;
+    margin: 0;
+    padding: .5rem 0;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+}
+
+.export-form .actions {
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.export-downloads {
+    border: 0;
+    padding: 0;
+    margin-top: 1rem;
+    min-width: 0;
+}
+
+.export-downloads > summary {
+    min-height: 44px;
+    max-width: 100%;
+    list-style: none;
+}
+
+.export-downloads > summary::-webkit-details-marker {
+    display: none;
+}
+
+.export-downloads .export-form {
+    margin-top: 1rem;
+}
+
+@media (max-width: 650px) {
+    .export-form .actions {
+        justify-content: center;
+    }
 }
 
 .not-billed-note {

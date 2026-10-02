@@ -3,6 +3,9 @@
 ## Estado
 Aceptada
 
+Ampliada por [ADR-005](ADR-005-csv-formats-downloads.md): dos formatos CSV y
+selección de descargas después del cierre. La descarga conjunta se ofrece en ZIP.
+
 ## Fecha
 2026-09-29
 

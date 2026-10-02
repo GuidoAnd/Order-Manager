@@ -92,8 +92,11 @@ async def check_not_billed(tmp_path, viewport):
             await assert_layout(page, viewport)
             await page.goto("http://order-manager.test/jornada")
             await page.get_by_role("link", name="Cerrar y contabilizar ventas").click()
+            await page.get_by_role("button", name="Cerrar ventas y elegir descarga CSV / JSON / ZIP").click()
+            await page.get_by_role("heading", name="Jornada cerrada", exact=True).wait_for()
+            await page.get_by_role("radio", name="JSON completo").check()
             async with page.expect_download() as download_info:
-                await page.get_by_role("button", name="Cerrar ventas y contabilizarlas").click()
+                await page.get_by_role("button", name="Descargar", exact=True).click()
             download = await download_info.value
             assert await download.failure() is None
             data = json.loads(Path(await download.path()).read_text())
@@ -103,6 +106,7 @@ async def check_not_billed(tmp_path, viewport):
             assert data["statistics"] == expected
             assert store.get_globals()["orders"] == 1
             assert store.get_globals()["revenue"] == expected["revenue"]
+            await page.get_by_role("link", name="Volver al Dashboard", exact=True).click()
             await page.get_by_role("heading", name="Dashboard", exact=True).wait_for()
         finally:
             await browser.close()

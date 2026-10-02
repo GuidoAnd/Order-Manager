@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
-from urllib.parse import parse_qs
+from typing import Annotated, Literal
+from urllib.parse import parse_qs, urlencode
 
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import (
@@ -13,13 +13,23 @@ from fastapi.responses import (
     RedirectResponse,
     Response,
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field
 
 from . import journey_results, web
 from .article_search import ArticleSearch
-from .store import DomainError, Store
+from .export_formats import ExportFormat, download_file
+from .store import MAX_INPUT_INTEGER, DomainError, Store
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def reject_boolean(value: object) -> object:
+    if isinstance(value, bool):
+        raise ValueError("El valor debe ser un número entero, no un booleano.")
+    return value
+
+
+NonBooleanInt = Annotated[int, BeforeValidator(reject_boolean)]
 
 
 class NameInput(BaseModel):
@@ -38,7 +48,7 @@ class ArticleInput(BaseModel):
     name: str
     category: str
     subcategory: str
-    unit_price: int | None = Field(default=None, ge=0)
+    unit_price: NonBooleanInt | None = Field(default=None, ge=0, le=MAX_INPUT_INTEGER)
 
 
 class LineInput(BaseModel):
@@ -46,8 +56,8 @@ class LineInput(BaseModel):
     name: str | None = None
     category: str | None = None
     subcategory: str | None = None
-    unit_price: int | None = Field(default=None, ge=0)
-    quantity: int = Field(ge=1)
+    unit_price: NonBooleanInt | None = Field(default=None, ge=0, le=MAX_INPUT_INTEGER)
+    quantity: NonBooleanInt = Field(ge=1, le=MAX_INPUT_INTEGER)
 
 
 class OrderInput(BaseModel):
@@ -112,7 +122,7 @@ def order_form_lines(rows: list[dict], inventory: dict) -> list[dict]:
 
 
 def make_app(global_file: Path | None = None) -> FastAPI:
-    app = FastAPI(title="Order Manager", version="0.2-dev")
+    app = FastAPI(title="Order Manager", version="0.2")
     store = Store(global_file or ROOT / "data" / "global_stats.json")
     app.state.store = store
 
@@ -146,13 +156,14 @@ def make_app(global_file: Path | None = None) -> FastAPI:
         )
 
     @app.get("/api/exports/last")
-    def latest_export(journey_id: str | None = None):
+    def latest_export(journey_id: str | None = None, format: ExportFormat = "json"):
         journey_id, payload = store.get_last_export(journey_id)
+        filename, media_type, content = download_file(journey_id, payload, format)
         return Response(
-            payload,
-            media_type="application/json",
+            content,
+            media_type=media_type,
             headers={
-                "Content-Disposition": f'attachment; filename="jornada-{journey_id}.json"'
+                "Content-Disposition": f'attachment; filename="{filename}"'
             },
         )
 
@@ -267,6 +278,17 @@ def make_app(global_file: Path | None = None) -> FastAPI:
     def events_page(page: int = Query(default=1, ge=1)):
         return web.events_page(store, page=page)
 
+    @app.get("/exportaciones", response_class=HTMLResponse)
+    def exports_page(journey_id: str):
+        try:
+            store.get_last_export(journey_id)
+        except DomainError as error:
+            return HTMLResponse(web.layout("Exportación no disponible", (
+                f'<p role="alert">{web.h(error)}</p>'
+                '<a class="button quiet" href="/">Volver al Dashboard</a>'
+            )), status_code=error.status)
+        return web.closed_journey_page(journey_id)
+
     @app.get("/confirmar/{action}", response_class=HTMLResponse)
     def confirm_page(action: str):
         return web.confirm_page(store, action)
@@ -286,7 +308,7 @@ def make_app(global_file: Path | None = None) -> FastAPI:
             if action == "create":
                 store.create_journey(values.get("title", ""))
             elif action == "rename":
-                store.rename_journey(values.get("title", ""))
+                store.rename_journey(values.get("title", ""), values.get("journey_id", ""))
             elif action == "add_author":
                 store.add_author(values.get("name", ""))
             elif action == "rename_author":
@@ -299,7 +321,10 @@ def make_app(global_file: Path | None = None) -> FastAPI:
             elif action == "close" and values.get("confirm") == "yes":
                 journey_id = values.get("journey_id", "")
                 store.close_journey(journey_id)
-                return HTMLResponse(web.closed_journey_page(journey_id))
+                return RedirectResponse(
+                    "/exportaciones?" + urlencode({"journey_id": journey_id}),
+                    status_code=303,
+                )
             elif action == "discard" and values.get("confirm") == "yes":
                 store.discard_journey(values.get("journey_id", ""))
             else:
@@ -398,7 +423,7 @@ def make_app(global_file: Path | None = None) -> FastAPI:
             count = int(values.get("count", "1"))
             if count < 1 or count > 50:
                 raise DomainError("Número de líneas inválido.")
-            inventory = store.get_inventory()
+            inventory = store.get_order_inventory(values.get("order_id", ""))
             rows = order_form_rows(values, count, inventory)
             action = values.get("action", "")
             if action == "add":

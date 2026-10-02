@@ -19,7 +19,8 @@ def test_rename_preserves_journey_data(tmp_path):
     before = deepcopy(store.get_journey())
     status, headers, _ = request(
         app, "POST", "/ui/journey",
-        {"action": "rename", "title": "  Feria de jueves  "}, form=True,
+        {"action": "rename", "title": "  Feria de jueves  ",
+         "journey_id": before["id"]}, form=True,
     )
     assert status == 303
     assert headers["location"] == "/jornada"
@@ -34,10 +35,10 @@ def test_rename_preserves_journey_data(tmp_path):
 
 def test_rename_error_preserves_input_and_opens_editor(tmp_path):
     app = make_app(tmp_path / "globals.json")
-    app.state.store.create_journey("Turno")
+    journey = app.state.store.create_journey("Turno")
     status, _, page = request(
         app, "POST", "/ui/journey",
-        {"action": "rename", "title": "   "}, form=True,
+        {"action": "rename", "title": "   ", "journey_id": journey["id"]}, form=True,
     )
     assert status == 400
     assert 'class="journey-name-editor" open' in page
@@ -53,7 +54,7 @@ def test_closed_journey_cannot_be_renamed(tmp_path):
     exported = store.close_journey(journey["id"])
     status, _, page = request(
         app, "POST", "/ui/journey",
-        {"action": "rename", "title": "Otro nombre"}, form=True,
+        {"action": "rename", "title": "Otro nombre", "journey_id": journey["id"]}, form=True,
     )
     assert status == 409
     assert "journey-name-editor" not in page

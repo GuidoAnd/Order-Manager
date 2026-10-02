@@ -23,6 +23,6 @@ Fecha UTC: **2026-10-01T17:24:05Z**. Resultado: **PASS**.
   (111 unitarias/integrales y 55 de navegador).
 - `git diff --check`: PASS.
 
-El [formato documentado](../../versions/v0_2.md) corresponde a esta descarga.
+El [formato documentado](../../version/v0_2.md#json-descargado) corresponde a esta descarga.
 La jornada y el historial de sus cambios siguen siendo temporales en memoria;
 las órdenes exportadas representan su estado vigente al cierre.
