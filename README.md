@@ -10,12 +10,13 @@ La aplicación está planteada con FastAPI y Uvicorn y una interfaz HTML/CSS. La
 | --- | --- | --- |
 | v0.1 | Implementada | Módulos integrados de jornadas, autores, órdenes, artículos, ventas y estadísticas. |
 | v0.2 | Implementada; revisión final documentada | Inventario persistente, resultados por autor, interfaz móvil paginada, órdenes no facturadas y exportación JSON, dos CSV o ZIP. |
-| v0.3 | En desarrollo | Persistencia por acción, rollback y logging configurable; healthcheck, seguridad, plantillas y Docker pendientes. |
+| v0.3 | En desarrollo | Persistencia por acción, rollback y logging configurable; healthcheck operativo; seguridad, plantillas y Docker pendientes. |
 | v1.0 | Planificada | Versión final prevista del MVP. |
 
 La versión actual de desarrollo es v0.3 del MVP. El primer bloque incorpora
-persistencia por acción y rollback; el segundo agrega logging con DEBUG. Los
-cuatro bloques restantes siguen pendientes.
+persistencia por acción y rollback; el segundo agrega logging con DEBUG.
+El tercer bloque agrega comprobación de salud; seguridad, frontend y Docker
+siguen pendientes.
 La API identifica esta versión como `0.3`. Consultar el [resumen de v0.3](docs/version/v0_3.md).
 La revisión histórica de v0.2 y sus resultados están en el [resumen de v0.2](docs/version/v0_2.md).
 
@@ -31,6 +32,7 @@ sin volver a contabilizar ventas.
 - [Resumen de v0.2](docs/version/v0_2.md)
 - [Arquitectura](docs/ARQUITECTURE.md)
 - [Logging y troubleshooting](docs/LOGGING.md)
+- [Healthcheck y script operativo](docs/HEALTHCHECK.md)
 - [Decisiones técnicas](docs/decisions/) — motivos, alternativas y consecuencias de cambios importantes.
 - [Informes de pruebas por versión](docs/tests/README.md)
 - [Auditorías](docs/audits/)

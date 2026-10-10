@@ -120,13 +120,15 @@ class RecoveringFileHandler(RotatingFileHandler):
 
 
 class RuntimeLog:
-    def __init__(self, directory: Path, config: LogConfig | None = None):
+    def __init__(self, directory: Path, config: LogConfig | None = None, *, filename="application.log"):
+        if filename not in {"application.log", "healthcheck.log"}:
+            raise ValueError("Nombre de diagnóstico no permitido.")
         self.config = config or LogConfig.from_environment()
         self.logger = logging.Logger("order_manager", level=self.config.level)
         self.logger.propagate = False
         self.console = NonFatalConsoleHandler(sys.stderr)
         self.console.setFormatter(JsonFormatter())
-        self.file = RecoveringFileHandler(directory / "logs" / "application.log", self.config, self.console)
+        self.file = RecoveringFileHandler(directory / "logs" / filename, self.config, self.console)
         self.file.setFormatter(JsonFormatter())
         self.logger.addHandler(self.console)
         self.logger.addHandler(self.file)

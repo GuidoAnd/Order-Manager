@@ -20,6 +20,9 @@ Consultar [persistencia y recuperación](PERSISTENCIA.md) para formato y operaci
 archivo rotado; captura errores de acciones, exportación y solicitudes. DEBUG
 agrega fases y tiempos sin datos de formularios. El historial de acciones
 permanece separado e íntegro; consultar [logging](LOGGING.md).
+`health.py` comprueba la revisión y DATA_DIR bajo bloqueo sin mutaciones de negocio;
+`healthcheck.py` consulta HTTP local con reintentos. El endpoint distingue estado
+sano, degradado e indisponible; consultar [healthcheck](HEALTHCHECK.md).
 
 La aplicación ASGI se define en `order_manager/api.py`. El `api.py` de la raíz
 solo expone ese mismo objeto `app` para herramientas que requieren un punto de

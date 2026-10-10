@@ -23,6 +23,7 @@ from .article_search import ArticleSearch
 from .export_formats import ExportFormat, download_file
 from .store import MAX_INPUT_INTEGER, DomainError, Store
 from .runtime_logging import LogConfig, RequestDiagnostics
+from .health import HealthCheck
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -149,6 +150,13 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
     app = FastAPI(title="Order Manager", version="0.3", lifespan=lifespan)
     app.add_middleware(RequestDiagnostics, runtime=store.runtime_log)
     app.state.store = store
+    health = HealthCheck(store)
+    app.state.health = health
+
+    @app.get("/api/health")
+    def health_status():
+        result = health.check()
+        return JSONResponse(result, status_code=503 if result["status"] == "unavailable" else 200)
 
     @app.exception_handler(DomainError)
     async def domain_error(request: Request, error: DomainError):
