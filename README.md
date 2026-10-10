@@ -10,11 +10,12 @@ La aplicación está planteada con FastAPI y Uvicorn y una interfaz HTML/CSS. La
 | --- | --- | --- |
 | v0.1 | Implementada | Módulos integrados de jornadas, autores, órdenes, artículos, ventas y estadísticas. |
 | v0.2 | Implementada; revisión final documentada | Inventario persistente, resultados por autor, interfaz móvil paginada, órdenes no facturadas y exportación JSON, dos CSV o ZIP. |
-| v0.3 | En desarrollo | Persistencia por acción y recuperación de la última jornada; operación, seguridad, plantillas y Docker pendientes. |
+| v0.3 | En desarrollo | Persistencia por acción, rollback y logging configurable; healthcheck, seguridad, plantillas y Docker pendientes. |
 | v1.0 | Planificada | Versión final prevista del MVP. |
 
 La versión actual de desarrollo es v0.3 del MVP. El primer bloque incorpora
-persistencia por acción y rollback; los otros cinco bloques siguen pendientes.
+persistencia por acción y rollback; el segundo agrega logging con DEBUG. Los
+cuatro bloques restantes siguen pendientes.
 La API identifica esta versión como `0.3`. Consultar el [resumen de v0.3](docs/version/v0_3.md).
 La revisión histórica de v0.2 y sus resultados están en el [resumen de v0.2](docs/version/v0_2.md).
 
@@ -29,6 +30,7 @@ sin volver a contabilizar ventas.
 - [Resumen de v0.1](docs/version/v0_1.md)
 - [Resumen de v0.2](docs/version/v0_2.md)
 - [Arquitectura](docs/ARQUITECTURE.md)
+- [Logging y troubleshooting](docs/LOGGING.md)
 - [Decisiones técnicas](docs/decisions/) — motivos, alternativas y consecuencias de cambios importantes.
 - [Informes de pruebas por versión](docs/tests/README.md)
 - [Auditorías](docs/audits/)
@@ -67,3 +69,8 @@ Se mantiene una sola instancia y un solo worker. Los datos están excluidos de G
 Un directorio o volumen persistente no sustituye una copia de seguridad.
 Consultar [persistencia y recuperación](docs/PERSISTENCIA.md) antes de restaurar datos.
 Los informes se agrupan por versión en [docs/tests](docs/tests/README.md).
+
+El diagnóstico se guarda en `DATA_DIR/logs/application.log` y consola, con INFO
+por defecto y `LOG_LEVEL=DEBUG` para troubleshooting. Rota a 5 MiB con 5 copias;
+el historial de acciones y cierres se conserva íntegro por separado. Consultar
+[configuración y comportamiento ante fallos](docs/LOGGING.md).

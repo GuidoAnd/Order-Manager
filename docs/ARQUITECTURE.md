@@ -16,6 +16,10 @@ La memoria sirve para trabajar; al reiniciar se carga la revisión confirmada.
 `persistence.py` coordina archivos y manifiestos; `state_validation.py` valida
 integridad de negocio y relaciones. `Store` conserva la lógica de órdenes y jornadas.
 Consultar [persistencia y recuperación](PERSISTENCIA.md) para formato y operación.
+`runtime_logging.py` configura diagnóstico por instancia, JSON UTC, consola y
+archivo rotado; captura errores de acciones, exportación y solicitudes. DEBUG
+agrega fases y tiempos sin datos de formularios. El historial de acciones
+permanece separado e íntegro; consultar [logging](LOGGING.md).
 
 La aplicación ASGI se define en `order_manager/api.py`. El `api.py` de la raíz
 solo expone ese mismo objeto `app` para herramientas que requieren un punto de

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import parse_qs, urlencode
@@ -20,6 +22,7 @@ from . import journey_results, web
 from .article_search import ArticleSearch
 from .export_formats import ExportFormat, download_file
 from .store import MAX_INPUT_INTEGER, DomainError, Store
+from .runtime_logging import LogConfig, RequestDiagnostics
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -128,12 +131,23 @@ def order_form_lines(rows: list[dict], inventory: dict) -> list[dict]:
     return lines
 
 
-def make_app(global_file: Path | None = None, *, data_dir: Path | None = None) -> FastAPI:
+def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
+             log_config: LogConfig | None = None) -> FastAPI:
     if global_file is not None and data_dir is not None:
         raise ValueError("Indique global_file o data_dir, no ambos.")
     directory = Path(data_dir or os.environ.get("DATA_DIR") or ROOT / "data").resolve()
-    app = FastAPI(title="Order Manager", version="0.3")
-    store = Store(global_file or directory / "global_stats.json")
+    store = Store(global_file or directory / "global_stats.json", log_config=log_config)
+
+    @asynccontextmanager
+    async def lifespan(app):
+        try:
+            yield
+        finally:
+            store.runtime_log.record(logging.INFO, "Aplicación detenida.", "shutdown")
+            store.runtime_log.close()
+
+    app = FastAPI(title="Order Manager", version="0.3", lifespan=lifespan)
+    app.add_middleware(RequestDiagnostics, runtime=store.runtime_log)
     app.state.store = store
 
     @app.exception_handler(DomainError)
@@ -146,7 +160,7 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None) -
     @app.get("/api/storage")
     def storage_status():
         return {"available": not store.storage.blocked, "warnings": store.storage.warnings,
-                "revision": store.storage.revision}
+                "revision": store.storage.revision, "diagnostic_log_available": not store.runtime_log.file.failed}
 
     @app.get("/api/journey/recovery")
     def recovery_info():
@@ -185,7 +199,13 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None) -
     def latest_export(journey_id: str | None = None, format: ExportFormat = "json",
                       close_id: str | None = None):
         journey_id, payload = store.get_last_export(journey_id, close_id)
-        filename, media_type, content = download_file(journey_id, payload, format)
+        try:
+            filename, media_type, content = download_file(journey_id, payload, format)
+        except Exception as error:
+            store.runtime_log.record(logging.ERROR, "Falló la generación de la descarga.", "export_failed",
+                                    error=error, journey_id=journey_id, format=format)
+            raise
+        store.runtime_log.record(logging.INFO, "Descarga generada.", "export_generated", journey_id=journey_id, format=format)
         return Response(
             content,
             media_type=media_type,

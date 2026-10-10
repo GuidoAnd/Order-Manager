@@ -5,6 +5,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from functools import wraps
 import json
+import logging
 from pathlib import Path
 from threading import RLock
 from uuid import uuid4
@@ -14,6 +15,7 @@ from .journey_export import build_export
 from .seed_inventory import initial_inventory
 from .persistence import RevisionStorage, StorageError
 from .state_validation import validate_state
+from .runtime_logging import LogConfig, RuntimeLog
 
 
 MAX_INPUT_INTEGER = 2**63 - 1
@@ -137,13 +139,26 @@ def mutating(method):
             self._ensure_storage()
             before = self._state()
             self._action_events = []
+            context = {"journey_id": (self.journey or {}).get("id"), "revision": self.storage.revision}
+            self.runtime_log.record(logging.DEBUG, "Inicio de acción.", method.__name__, phase="mutation", **context)
+            phase = "mutation"
             try:
                 result = method(self, *args, **kwargs)
+                phase = "persistence"
                 committed = self.storage.commit(self._state(), method.__name__, self._action_events)
                 self._operation = committed["operation"]
+                self.runtime_log.record(logging.INFO, "Acción confirmada.", method.__name__,
+                                        journey_id=(self.journey or {}).get("id") or context["journey_id"],
+                                        revision=self.storage.revision)
                 return result
             except Exception as error:
                 self._restore(before)
+                if not isinstance(error, DomainError):
+                    self.runtime_log.record(logging.ERROR, "La acción no pudo confirmarse.", method.__name__,
+                                            error=error, phase=phase, **context)
+                else:
+                    self.runtime_log.record(logging.DEBUG, "Acción rechazada por validación.", method.__name__,
+                                            status=error.status, **context)
                 if isinstance(error, (OSError, StorageError)):
                     raise DomainError(
                         "No se pudo confirmar el guardado. Revise el almacenamiento antes de reintentar.", 503,
@@ -155,7 +170,7 @@ def mutating(method):
 
 
 class Store:
-    def __init__(self, global_file: Path):
+    def __init__(self, global_file: Path, *, log_config: LogConfig | None = None):
         self.lock = RLock()
         self.journey: dict | None = None
         self.last_export: tuple[str, bytes] | None = None
@@ -165,7 +180,8 @@ class Store:
         self.global_file = global_file
         self.inventory_file = global_file.parent / "inventory.json"
         self.data_dir = global_file.parent.resolve()
-        self.storage = RevisionStorage(self.data_dir)
+        self.runtime_log = RuntimeLog(self.data_dir, log_config)
+        self.storage = RevisionStorage(self.data_dir, runtime_log=self.runtime_log)
         self.rollback: dict | None = None
         self._export_close_id: str | None = None
         self._operation: dict | None = None
@@ -187,9 +203,13 @@ class Store:
                 validate_state(self._state())
                 committed = self.storage.commit(self._state(), "migration" if legacy else "initialize", [])
                 self._operation = committed["operation"]
-            except (OSError, ValueError, KeyError, TypeError, StorageError):
+            except (OSError, ValueError, KeyError, TypeError, StorageError) as error:
+                self.runtime_log.record(logging.ERROR, "Inicialización o migración fallida.", "storage_initialize", error=error)
                 self.storage.blocked = True
                 self.storage.warn("Los datos no pudieron inicializarse o migrarse. Restaure archivos válidos antes de operar.")
+
+        self.runtime_log.record(logging.INFO, "Aplicación inicializada.", "startup",
+                                revision=self.storage.revision, phase="blocked" if self.storage.blocked else "ready")
 
     def _ensure_storage(self) -> None:
         if self.storage.blocked:
@@ -638,8 +658,13 @@ class Store:
             j = self._active(expected_id)
             stats = summary(j)
             new_articles = list(self._new_catalog_articles.values())
-            export = build_export(j, stats, new_articles, self._price_changes, now())
-            payload = json.dumps(export, ensure_ascii=False, indent=2).encode("utf-8")
+            try:
+                export = build_export(j, stats, new_articles, self._price_changes, now())
+                payload = json.dumps(export, ensure_ascii=False, indent=2).encode("utf-8")
+            except Exception as error:
+                self.runtime_log.record(logging.ERROR, "Falló la generación de la exportación de cierre.",
+                                        "export_failed", error=error, journey_id=j["id"], format="json")
+                raise
             next_globals = deepcopy(self.globals)
             if j["id"] not in next_globals["closed_ids"]:
                 next_globals["closed_ids"].append(j["id"])

@@ -10,9 +10,11 @@ no se suman ni implican que una versión en desarrollo esté terminada.
 | --- | --- | --- |
 | v0.1 | [v0_1/](v0_1/) | Revisión final PASS: 22 pruebas funcionales e integrales de jornadas, autores, órdenes, artículos, estadísticas y cierre JSON. |
 | v0.2, revisión final | [v0_2/](v0_2/) | Suite completa: 285 PASS (215 unitarias/integrales y 70 de navegador), en 205,96 s. Incluye flujo principal, interfaz desde 320 px, exportación JSON/dos CSV/ZIP y regresiones de validación numérica, formularios antiguos y categorías. |
-| v0.3, primer bloque | [v0_3/](v0_3/) | 311 PASS: persistencia y rollback, incluidos flujos de navegador desde 320 px. Los otros bloques siguen pendientes. |
+| v0.3, bloques 1 y 2 | [v0_3/](v0_3/) | 328 PASS: persistencia, rollback y logging; navegador desde 320 px. Los cuatro bloques restantes siguen pendientes. |
 
 ## v0.3
+
+- [Logging y regresiones: 328 PASS](v0_3/LOGGING_20261010T201034Z.md).
 
 - [Persistencia y rollback: 311 PASS](v0_3/PERSISTENCIA_ROLLBACK_20261010T194430Z.md).
 

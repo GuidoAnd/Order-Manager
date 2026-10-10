@@ -14,7 +14,6 @@ from .state_validation import validate_state
 
 COMPONENTS = ("inventory", "global_stats", "journey", "rollback", "last_export", "operation")
 ID_PATTERN = re.compile(r"[0-9a-f]{32}\Z")
-LOGGER = logging.getLogger(__name__)
 
 
 class StorageError(Exception):
@@ -55,8 +54,9 @@ def write_json(path: Path, value: object) -> None:
 
 
 class RevisionStorage:
-    def __init__(self, directory: Path):
+    def __init__(self, directory: Path, *, runtime_log=None):
         self.directory = directory.resolve()
+        self.runtime_log = runtime_log
         self.manifest: dict | None = None
         self.warnings: list[str] = []
         self.blocked = False
@@ -71,7 +71,13 @@ class RevisionStorage:
     def warn(self, message: str) -> None:
         if message not in self.warnings:
             self.warnings.append(message)
-            LOGGER.warning(message)
+            self.log(logging.WARNING, message, "storage_warning")
+
+    def log(self, level, message, operation, **context):
+        if self.runtime_log is not None:
+            self.runtime_log.record(level, message, operation, revision=self.revision, **context)
+        else:
+            logging.getLogger(__name__).log(level, message)
 
     def read_manifest(self, path: Path) -> dict:
         if path.is_symlink():
@@ -198,6 +204,7 @@ class RevisionStorage:
     def commit(self, state: dict, action: str, events: list[dict]) -> dict:
         if self.blocked:
             raise StorageError("El almacenamiento requiere recuperación.")
+        self.log(logging.DEBUG, "Preparando revisión coherente.", action, phase="prepare")
         validate_state(state)
         revision_id = uuid4().hex
         previous_operation = state.get("operation") or {}
@@ -240,6 +247,7 @@ class RevisionStorage:
                 self.warn("No se pudo confirmar el guardado. Reinicie para verificar la última revisión antes de reintentar.")
                 raise StorageError("Resultado del guardado incierto; operaciones bloqueadas hasta verificarlo.") from error
         self.manifest = manifest
+        self.log(logging.DEBUG, "Revisión publicada.", action, phase="published", operation_id=revision_id)
         self.flush_events(operation["pending_events"])
         try:
             self.prune()
@@ -266,7 +274,11 @@ class RevisionStorage:
             try:
                 if not self.event_saved(event):
                     write_json(self.event_path(event), event)
-            except (OSError, ValueError, KeyError, TypeError):
+                    self.log(logging.INFO, "Evento operativo guardado en el historial.", "history_saved",
+                             event=event["action"], journey_id=event["journey_id"], operation_id=event["operation_id"])
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                self.log(logging.ERROR, "Falló la escritura del historial; el evento permanece pendiente.",
+                         "history_failed", error=error)
                 self.warn("Hay eventos pendientes de guardar en el historial; se reintentará su escritura.")
                 return
 
