@@ -84,13 +84,13 @@ def test_catalog_taxonomy_uses_existing_spelling_and_can_be_edited(active, metho
     ("cafetería", "infusiones"),
 ])
 @pytest.mark.parametrize("order_status", ["sale", "not_billed"])
-def test_api_order_taxonomy_remains_editable_without_persisting_it(
+def test_api_order_taxonomy_is_persisted_and_remains_editable(
     active, category, subcategory, order_status,
 ):
     app, author = active
     store = app.state.store
     before = store.get_inventory()
-    disk_before = store.inventory_file.read_bytes()
+    disk_before = store.storage.component_path("inventory").read_bytes()
     line = product(category=category, subcategory=subcategory, quantity=2)
     status, _, body = request(app, "POST", "/api/orders", {
         "author_id": author["id"], "status": order_status, "lines": [line],
@@ -121,9 +121,10 @@ def test_api_order_taxonomy_remains_editable_without_persisting_it(
     assert updated["total"] == (300 if order_status == "sale" else None)
     assert updated["lines"][0]["category"].casefold() == category.casefold()
     assert updated["lines"][0]["subcategory"].casefold() == subcategory.casefold()
-    assert store.get_inventory() == before
-    assert store.inventory_file.read_bytes() == disk_before
-    assert store.get_order_inventory() == before
+    assert any(a["name"] == line["name"] for a in store.get_inventory()["articles"])
+    assert store.get_order_inventory() == store.get_inventory()
+    assert Store(store.global_file).get_inventory() == store.get_inventory()
+
 
 
 @pytest.mark.parametrize("value", [MAX_INPUT_INTEGER + 1, 10**400, "9" * 5000],
@@ -169,7 +170,7 @@ def test_extreme_catalog_prices_preserve_inventory(active, value, interface, edi
     article_id = store.get_inventory()["articles"][0]["id"] if editing else ""
     before = store.get_journey()
     inventory_before = store.get_inventory()
-    disk_before = store.inventory_file.read_bytes()
+    disk_before = store.storage.component_path("inventory").read_bytes()
     data = product(unit_price=value)
     if interface == "api":
         url = "/api/articles" + (f"/{article_id}" if editing else "")
@@ -182,7 +183,7 @@ def test_extreme_catalog_prices_preserve_inventory(active, value, interface, edi
         assert status == 400 and "Máximo permitido" in page
     assert store.get_journey() == before
     assert store.get_inventory() == inventory_before
-    assert store.inventory_file.read_bytes() == disk_before
+    assert store.storage.component_path("inventory").read_bytes() == disk_before
 
 
 def test_maximum_values_keep_statistics_and_close_working(active):
@@ -206,7 +207,7 @@ def test_catalog_is_resolved_once_per_order_and_refreshed_after_changes(active):
     store = app.state.store
     coffee = next(item for item in store.get_available_articles() if item["name"] == "Cafe")
     original = store.save_order(author["id"], [{**product(), "quantity": 1}])
-    temporary = next(item for item in store.get_available_articles() if item.get("temporary"))
+    temporary = next(item for item in store.get_available_articles() if item["name"] == "Especial")
     lines = [{"catalog_id": coffee["id"], "quantity": 2},
              {"catalog_id": temporary["id"], "quantity": 1}] * 25
     with patch.object(store, "get_available_articles", wraps=store.get_available_articles) as calls:
@@ -217,13 +218,10 @@ def test_catalog_is_resolved_once_per_order_and_refreshed_after_changes(active):
     with patch.object(store, "get_available_articles", wraps=store.get_available_articles) as calls:
         updated = store.save_order(author["id"], lines, order["id"])
         assert calls.call_count == 1
-    assert updated["total"] == 25 * (3200 * 2 + 100)
+    assert updated["total"] == order["total"]
     store.delete_order(original["id"])
     store.delete_order(order["id"])
-    before = store.get_journey()
-    with pytest.raises(DomainError, match="Artículo no encontrado"):
-        store.save_order(author["id"], lines)
-    assert store.get_journey() == before
+    assert store.save_order(author["id"], lines)["total"] == 25 * (3200 * 2 + 100)
 
 
 def test_article_search_is_shared_by_views_and_refreshed_each_request(active):

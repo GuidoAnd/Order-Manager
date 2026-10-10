@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import replace
+from functools import wraps
 from hashlib import sha256
 from html import escape
 from pathlib import Path
@@ -38,13 +39,14 @@ def article_statistics_name(key: str) -> str:
     return re.sub(r"\\([\\/])", r"\1", key.split(" / ")[-1])
 
 
-def download_form(journey_id: str) -> str:
+def download_form(journey_id: str, close_id: str | None = None) -> str:
     options = (
         ("csv_summary", "CSV resumen", "Cantidades por categoría, con artículos en columnas."),
         ("csv_detail", "CSV detallado", "Una fila por artículo con unidades e importe."),
         ("json", "JSON completo", "Órdenes, registros y datos de la jornada."),
         ("zip", "Todo en ZIP", "Los dos CSV y el JSON en una sola descarga."),
     )
+    close_field = f'<input type="hidden" name="close_id" value="{h(close_id)}">' if close_id else ""
     radios = "".join(
         f'<input type="radio" name="format" id="export-{value}" value="{value}"'
         + (' checked' if value == "zip" else '') + '>'
@@ -52,7 +54,7 @@ def download_form(journey_id: str) -> str:
         for value, label, description in options
     )
     return f"""<form class="export-form" method="get" action="/api/exports/last">
-        <input type="hidden" name="journey_id" value="{h(journey_id)}">
+        <input type="hidden" name="journey_id" value="{h(journey_id)}">{close_field}
         <fieldset>
             <legend>Elegir archivo para descargar</legend>
             <div class="export-options">{radios}</div>
@@ -92,7 +94,7 @@ def layout(title: str, content: str, head: str = "") -> str:
 </head>
 <body>
     <header class="top">
-        <a class="brand" href="/">Order Manager <small>v0.2 en desarrollo</small></a>
+        <a class="brand" href="/">Order Manager <small>v0.3 en desarrollo</small></a>
         <nav class="desktop-navigation" aria-label="Secciones">{links}</nav>
         <details class="mobile-navigation">
             <summary class="button quiet">Menú</summary>
@@ -103,7 +105,7 @@ def layout(title: str, content: str, head: str = "") -> str:
         <h1>{h(title)}</h1>
         {content}
     </main>
-    <footer>Order Manager · v0.2 en desarrollo</footer>
+    <footer>Order Manager · v0.3 en desarrollo</footer>
 </body>
 </html>"""
 
@@ -230,7 +232,7 @@ def journey_page(
                 <button type="submit">Crear jornada</button>
             </form>
         </section>"""
-        return layout("Jornada", alert(error) + body)
+        return layout("Jornada", alert(error) + body + recovery_button(store))
 
     author_values = author_values or {}
     author_action = author_values.get("action")
@@ -323,7 +325,7 @@ def journey_page(
             </a>
         </div>
     </section>"""
-    return layout("Jornada", alert(error) + body, journey_results.responsive_styles())
+    return layout("Jornada", alert(error) + body + recovery_button(store), journey_results.responsive_styles())
 
 
 def _catalog_option(article: dict, selected_id: str) -> str:
@@ -451,7 +453,7 @@ def _order_line(index: int, row: dict, catalog: list[dict], inventory: dict) -> 
                         {catalog_options}
                     </select>
                 </label>
-                <label class="line-price">Precio unitario si falta en el inventario
+                <label class="line-price">Precio unitario (completar si falta o editar una orden)
                     <input name="unit_price_{index}" type="number" min="0" step="1"
                            value="{inventory_price}">
                 </label>
@@ -787,12 +789,14 @@ def _search_fields(search: ArticleSearch, *, post: bool = False, page: int | Non
 def _article_row(article: dict, search: ArticleSearch, page: int) -> str:
     price = article["unit_price"]
     price_label = "Pendiente" if price is None else str(price)
+    using_orders = "/ordenes?" + urlencode({"article": article["id"]})
     return f"""<tr>
         <td data-label="Nombre">{h(article['name'])}</td>
         <td data-label="Categoría">{h(article['category'])}</td>
         <td data-label="Subcategoría">{h(article['subcategory'])}</td>
         <td data-label="Precio">{h(price_label)}</td>
         <td data-label="Acciones">
+            <a class="button quiet" href="{h(using_orders)}">Ver órdenes que lo usan</a>
             <details class="article-actions">
                 <summary class="button quiet" aria-label="Acciones de {h(article['name'])}">Acciones</summary>
                 <div class="row-actions">
@@ -1030,22 +1034,48 @@ def events_page(store: Store, page: int = 1) -> str:
         journey_id, _payload = store.get_last_export()
         download = f"""<details class="export-downloads">
             <summary class="button quiet">Descargar última jornada</summary>
-            {download_form(journey_id)}
+            {download_form(journey_id, store._export_close_id)}
         </details>"""
     except DomainError:
-        download = ""
+        download = "<p>Los archivos de la jornada recuperada estarán disponibles cuando vuelva a cerrarse.</p>" if store.journey and any(
+            e["action"] == "journey_recovered" and e["journey_id"] == store.journey["id"]
+            for e in store.get_events()
+        ) else ""
 
     body = f"""<section class="panel">
-        <h2>Movimientos de la jornada</h2>
+        <h2>Historial de jornadas</h2>
         {table}
-        <p>Esta lista muestra únicamente la jornada activa. Sus registros se incluyen
-           en la exportación JSON al cerrarla.</p>
+        <p>Esta lista conserva las acciones confirmadas, cierres, descartes y recuperaciones.
+           Los registros propios de cada jornada se incluyen en su exportación JSON.</p>
         {download}
     </section>"""
     return layout("Registros y exportación", body, table_pages.responsive_styles())
 
 
 def confirm_page(store: Store, action: str) -> str:
+    if action == "recover":
+        info = store.recovery_info()
+        if not info:
+            return layout("Recuperar jornada", "<p>No hay una jornada recuperable.</p>")
+        warning = (
+            f'Se descartará la jornada actual «{info["active_title"]}» sin contabilizar sus ventas. '
+            if info["active_id"] else ""
+        )
+        warning += "Se reabrirá la jornada anterior al momento previo a su cierre. El catálogo vigente se conserva."
+        fields = "".join(f'<input type="hidden" name="{key}" value="{h(info[key])}">'
+                         for key in ("close_id", "revision", "active_id"))
+        return layout("Recuperar jornada", f'''<section class="panel">
+            <p>Jornada a recuperar: <strong>{h(info['title'])}</strong>.</p>
+            <p role="alert">{h(warning)}</p>
+            <form method="post" action="/ui/journey">
+                <input type="hidden" name="action" value="recover">
+                <input type="hidden" name="confirm" value="yes">{fields}
+                <div class="actions">
+                    <button class="danger" type="submit">Confirmar recuperación</button>
+                    <a class="button quiet" href="/jornada">Cancelar</a>
+                </div>
+            </form>
+        </section>''')
     journey = store.get_journey()
     if not journey or action not in ("close", "discard"):
         message = '<p>Acción no disponible. <a href="/jornada">Volver a jornada</a>.</p>'
@@ -1084,12 +1114,41 @@ def confirm_page(store: Store, action: str) -> str:
     return layout(title, body)
 
 
-def closed_journey_page(journey_id: str) -> str:
+def closed_journey_page(journey_id: str, close_id: str | None = None) -> str:
     body = f"""<section class="panel">
         <p>La jornada se cerró y sus ventas se contabilizaron.</p>
         <p>Podés descargar más de un formato, uno por vez, o elegir todo en ZIP.
            La última jornada cerrada también está disponible en Registros durante
-           esta ejecución, hasta que cierres otra jornada.</p>
-        {download_form(journey_id)}
+           los reinicios, hasta que cierres otra jornada o recuperes su cierre.</p>
+        {download_form(journey_id, close_id)}
     </section>"""
     return layout("Jornada cerrada", body)
+
+
+def recovery_button(store: Store) -> str:
+    info = store.recovery_info()
+    if not info:
+        return ""
+    return f'''<section class="panel">
+        <h2>Recuperación de jornada</h2>
+        <p>Última jornada recuperable: <strong>{h(info['title'])}</strong>.</p>
+        <a class="button danger" href="/confirmar/recover">Recuperar última jornada</a>
+    </section>'''
+
+
+def storage_notices(page):
+    """Muestra advertencias de recuperación en todas las páginas de negocio."""
+    @wraps(page)
+    def render(store, *args, **kwargs):
+        result = page(store, *args, **kwargs)
+        notices = "".join(alert(message) for message in store.storage.warnings)
+        return result.replace("<main>", "<main>" + notices, 1)
+    return render
+
+
+dashboard = storage_notices(dashboard)
+journey_page = storage_notices(journey_page)
+orders_page = storage_notices(orders_page)
+articles_page = storage_notices(articles_page)
+events_page = storage_notices(events_page)
+confirm_page = storage_notices(confirm_page)

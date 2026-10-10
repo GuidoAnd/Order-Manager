@@ -23,7 +23,8 @@ async def check_review_fixes(tmp_path, viewport):
         "subcategory": "infusiones", "unit_price": 200, "quantity": 1,
     }])
     inventory_before = store.get_inventory()
-    position = len(inventory_before["categories"])
+    position = next(index for index, category in enumerate(inventory_before["categories"])
+                    if category["name"] == "Categoría original")
 
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(headless=True)

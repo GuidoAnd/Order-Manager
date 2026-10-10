@@ -1,4 +1,4 @@
-"""Catálogo inicial de v0.2; los cambios posteriores viven en data/inventory.json."""
+"""Catálogo inicial; los cambios posteriores viven en revisiones persistentes."""
 
 from __future__ import annotations
 

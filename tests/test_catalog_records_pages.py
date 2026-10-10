@@ -107,8 +107,10 @@ def test_empty_stale_and_invalid_pages_do_not_modify_the_journey(tmp_path):
     store.discard_journey()
     store.create_journey("Nueva")
     _, _, html = request(app, "GET", "/registros?page=999")
-    assert "1 movimientos · Página 1 de 1" in first_view(html, "journey-events")
-    assert "Autor 9" not in html
+    total = len(store.get_events())
+    pages = (total + 4) // 5
+    assert f"{total} movimientos · Página {pages} de {pages}" in first_view(html, "journey-events")
+    assert any(e["detail"] == "Autor 9" for e in store.get_events())
 
 
 async def check_tables(tmp_path, viewport):

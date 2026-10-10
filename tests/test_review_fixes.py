@@ -146,7 +146,7 @@ def test_new_product_ignores_previous_inventory_selection_and_price(active_app):
     assert line["name"] == "Agua de los cielos"
     assert line["unit_price"] == 900
     assert line["subtotal"] == 2700
-    assert store.get_inventory() == inventory
+    assert len(store.get_inventory()["articles"]) == len(inventory["articles"]) + 1
     assert any(a["name"] == line["name"] for a in store.get_available_articles())
 
 
@@ -230,13 +230,13 @@ def test_failed_close_keeps_data_and_can_retry_once(active_app, monkeypatch, int
     journey = store.get_journey()
     globals_before = store.get_globals()
     export_before = store.get_last_export()
-    disk_before = store.global_file.read_bytes()
+    disk_before = store.storage.component_path("global_stats").read_bytes()
 
     def fail_replace(*_args):
         raise OSError("detalle técnico que no debe publicarse")
 
     with monkeypatch.context() as failure:
-        failure.setattr("order_manager.store.os.replace", fail_replace)
+        failure.setattr("order_manager.persistence.os.replace", fail_replace)
         status, _, body = confirm(active_app, "close", journey["id"], interface)
     assert status == 503
     assert "reintentar" in body
@@ -244,7 +244,7 @@ def test_failed_close_keeps_data_and_can_retry_once(active_app, monkeypatch, int
     assert store.get_journey() == journey
     assert store.get_globals() == globals_before
     assert store.get_last_export() == export_before
-    assert store.global_file.read_bytes() == disk_before
+    assert store.storage.component_path("global_stats").read_bytes() == disk_before
     assert not list(store.global_file.parent.glob("*.tmp"))
 
     status, _, _ = confirm(active_app, "close", journey["id"], interface)
@@ -264,7 +264,7 @@ def test_inventory_failure_is_explained_without_changing_data(
     store = active_app.state.store
     original = store.get_inventory()
     journey = store.get_journey()
-    disk_before = store.inventory_file.read_bytes()
+    disk_before = store.storage.component_path("inventory").read_bytes()
     article_id = original["articles"][0]["id"]
     values = {"name": "Especial", "category": "Cafetería", "subcategory": "Infusiones", "unit_price": 100}
 
@@ -272,7 +272,7 @@ def test_inventory_failure_is_explained_without_changing_data(
         raise OSError("fallo simulado")
 
     with monkeypatch.context() as failure:
-        failure.setattr(store, "_write_json", fail_write)
+        failure.setattr("order_manager.persistence.write_json", fail_write)
         if interface == "ui":
             values["article_id"] = "" if action == "create" else article_id
             values["action"] = "delete" if action == "delete" else "save"
@@ -282,10 +282,10 @@ def test_inventory_failure_is_explained_without_changing_data(
             path = "/api/articles" + ("" if action == "create" else f"/{article_id}")
             status, _, body = request(active_app, method, path, values)
     assert status == 503
-    assert "No se pudo guardar el catálogo" in body
+    assert "No se pudo confirmar el guardado" in body
     assert store.get_inventory() == original
     assert store.get_journey() == journey
-    assert store.inventory_file.read_bytes() == disk_before
+    assert store.storage.component_path("inventory").read_bytes() == disk_before
     if interface == "ui" and action != "delete":
         assert 'name="name" value="Especial"' in body
         assert f'name="article_id" value="{values["article_id"]}"' in body
@@ -332,7 +332,10 @@ def test_old_statistics_preserve_history_and_merge_unambiguous_articles(tmp_path
         old_key: {"units": 2, "revenue": 200},
         ambiguous: {"units": 5, "revenue": 500},
     }
-    legacy.update(journeys=1, orders=2, units=7, revenue=700)
+    legacy.update(journeys=1, orders=2, units=7, revenue=700, closed_ids=["legacy-journey"],
+                  by_category={"Comida": {"units": 2, "revenue": 200}, "Bebidas": {"units": 5, "revenue": 500}})
+    from order_manager.seed_inventory import initial_inventory
+    (tmp_path / "inventory.json").write_text(json.dumps(initial_inventory()))
     path.write_text(json.dumps(legacy))
     disk_before = path.read_bytes()
     store = Store(path)
@@ -352,18 +355,15 @@ def test_old_statistics_preserve_history_and_merge_unambiguous_articles(tmp_path
     assert persisted["article_key_format"] == "escaped-v1"
 
 
-def test_events_belong_only_to_active_journey_and_export_keeps_closed_events(active_app):
+def test_history_keeps_all_journeys_and_export_keeps_own_events(active_app):
     store = active_app.state.store
-    first_events = deepcopy(store.get_events())
+    first_events = deepcopy(store.get_journey()["events"])
     exported = json.loads(store.close_journey())
     assert exported["events"][:-1] == first_events
     assert exported["events"][-1]["action"] == "journey_closed"
-    assert json.loads(request(active_app, "GET", "/api/events")[2]) == []
+    assert json.loads(request(active_app, "GET", "/api/events")[2])[-1]["action"] == "journey_closed"
     store.create_journey("Jornada B")
-    current_events = store.get_journey()["events"]
-    assert store.get_events() == current_events
-    assert json.loads(request(active_app, "GET", "/api/events")[2]) == current_events
     page = request(active_app, "GET", "/registros")[2]
-    assert "Jornada B" in page and "Jornada A" not in page
+    assert "Jornada B" in page and "Jornada A" in page
     store.discard_journey()
-    assert store.get_events() == []
+    assert store.get_events()[-1]["action"] == "journey_discarded"

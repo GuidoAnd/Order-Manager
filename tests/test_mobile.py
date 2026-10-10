@@ -342,7 +342,7 @@ async def run_mobile_workflow(tmp_path, viewport):
             await page.get_by_role("searchbox", name="Buscar por nombre").fill("agua de los cielos")
             await page.get_by_role("button", name="Buscar", exact=True).click()
             assert await page.locator("#available-articles tbody tr:visible").count() == 1
-            assert await page.locator("#available-articles").get_by_role("button", name="Eliminar").count() == 0
+            assert await page.locator("#available-articles").get_by_role("button", name="Eliminar", include_hidden=True).count() > 0
             await assert_article_layout(page, viewport)
             await page.get_by_role("link", name="Ver órdenes que lo usan").click()
             assert await page.get_by_role("cell", name="Agua de los cielos × 3").is_visible()

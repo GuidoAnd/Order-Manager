@@ -13,7 +13,7 @@ PASS indica que la operación comprobada terminó correctamente. FAIL indica que
 | Comprobación | Resultado | Evidencia |
 | --- | --- | --- |
 | Pull de `codex_branch` | PASS | `git pull --ff-only origin codex_branch`: rama actualizada. |
-| Push de un commit nuevo a `codex_branch` | PASS | El commit `82a4b22`, que eliminó `test.md`, se publicó: `b94e38e..82a4b22 codex_branch -> codex_branch`. |
+| Push de un commit nuevo a `codex_branch` | PASS | El commit `82a4b22` se publicó: `b94e38e..82a4b22 codex_branch -> codex_branch`. |
 | Lectura de `main` | PASS | Se consultó y obtuvo su referencia en una copia temporal del repositorio permitido. |
 | Cambio en otra rama local | PASS | Se creó `audit-local` y un commit de prueba dentro de la copia temporal. |
 | Simulación de push a `main` | PASS | `git push --dry-run` terminó con código 0. No se modificó `main`; permiso efectivo de escritura sin comprobar. |

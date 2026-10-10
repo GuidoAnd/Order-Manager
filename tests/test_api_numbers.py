@@ -60,7 +60,7 @@ def test_boolean_article_prices_are_rejected_without_changes(active, method, val
         url += f"/{article['id']}"
     before = store.get_journey()
     inventory_before = store.get_inventory()
-    disk_before = store.inventory_file.read_bytes()
+    disk_before = store.storage.component_path("inventory").read_bytes()
 
     status, _, body = request(app, method, url, {**data, "unit_price": value})
 
@@ -68,7 +68,7 @@ def test_boolean_article_prices_are_rejected_without_changes(active, method, val
     assert json.loads(body)["detail"][0]["loc"] == ["body", "unit_price"]
     assert store.get_journey() == before
     assert store.get_inventory() == inventory_before
-    assert store.inventory_file.read_bytes() == disk_before
+    assert store.storage.component_path("inventory").read_bytes() == disk_before
 
 
 @pytest.mark.parametrize("quantity,price", [(2, 0), ("2", "0"), (2.0, 0.0)])

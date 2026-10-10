@@ -2,7 +2,7 @@
 
 Aplicación web MVP para que un supervisor gestione jornadas, autores, órdenes y artículos. Cada orden admite varios artículos con cantidad y precio unitario. Calcula totales y estadísticas, y permite exportar la jornada en JSON, CSV resumen y CSV detallado, individualmente o juntos en ZIP.
 
-La aplicación está planteada con FastAPI y Uvicorn y una interfaz HTML/CSS. Los datos de jornada son temporales en memoria; las estadísticas globales y el inventario de artículos se guardan en archivos JSON locales. La autenticación y la persistencia de permisos del supervisor quedan para una actualización menor posterior. MariaDB se mantiene prevista para una etapa posterior.
+La aplicación está planteada con FastAPI y Uvicorn y una interfaz HTML/CSS. La jornada, el catálogo, los acumulados y la última exportación se guardan en revisiones JSON locales y se recuperan tras reiniciar. La autenticación y la persistencia de permisos del supervisor quedan para una actualización menor posterior. MariaDB se mantiene prevista para una etapa posterior.
 
 ## Versiones
 
@@ -10,19 +10,18 @@ La aplicación está planteada con FastAPI y Uvicorn y una interfaz HTML/CSS. Lo
 | --- | --- | --- |
 | v0.1 | Implementada | Módulos integrados de jornadas, autores, órdenes, artículos, ventas y estadísticas. |
 | v0.2 | Implementada; revisión final documentada | Inventario persistente, resultados por autor, interfaz móvil paginada, órdenes no facturadas y exportación JSON, dos CSV o ZIP. |
+| v0.3 | En desarrollo | Persistencia por acción y recuperación de la última jornada; operación, seguridad, plantillas y Docker pendientes. |
 | v1.0 | Planificada | Versión final prevista del MVP. |
 
-La versión actual es v0.2 del MVP. Su alcance incluye las correcciones de
-validación numérica, formularios antiguos y categorías, además de consultas
-del catálogo reutilizadas dentro de cada operación. El estado revisado y los
-resultados de validación se detallan en el [resumen de v0.2](docs/version/v0_2.md).
-La revisión final del 2026-10-02 pasó 285 pruebas, incluidas 70 de navegador
-desde 320 px. La API identifica esta versión como `0.2`.
+La versión actual de desarrollo es v0.3 del MVP. El primer bloque incorpora
+persistencia por acción y rollback; los otros cinco bloques siguen pendientes.
+La API identifica esta versión como `0.3`. Consultar el [resumen de v0.3](docs/version/v0_3.md).
+La revisión histórica de v0.2 y sus resultados están en el [resumen de v0.2](docs/version/v0_2.md).
 
 Al cerrar la jornada, un selector permite descargar CSV resumen (cantidades por
 categoría), CSV detallado (unidades e importe por artículo), JSON completo o los
 tres archivos en ZIP. En Registros, «Descargar última jornada» despliega las opciones
-para repetir las descargas hasta el siguiente cierre correcto o el reinicio,
+para repetir las descargas hasta el siguiente cierre correcto o su recuperación, incluso tras reiniciar,
 sin volver a contabilizar ventas.
 
 ## Documentación
@@ -51,8 +50,20 @@ Para preparar el entorno de pruebas y desarrollo, instalar
 Las herramientas ASGI que requieren un módulo en la raíz pueden importar `app`
 desde `api.py`; ese archivo expone la misma aplicación.
 
-La jornada activa y la última exportación se mantienen en memoria y se pierden
-al reiniciar. Las estadísticas globales se guardan en `data/global_stats.json`
-y el catálogo en `data/inventory.json`; ambos archivos están excluidos de Git.
-La arquitectura requiere una sola instancia y un solo proceso de aplicación.
-Los informes de resultados se agrupan por versión en [docs/tests](docs/tests/README.md).
+La ruta de datos se configura mediante `DATA_DIR`; por defecto se usa `data/`
+junto al código, independientemente del directorio de lanzamiento. Por ejemplo:
+
+```bash
+DATA_DIR=/ruta/datos .venv/bin/python -m uvicorn api:app --host 127.0.0.1 --port 8000
+```
+
+Cada modificación válida confirma una revisión coherente antes de responder éxito.
+Al reiniciar se restauran jornada, inventario, acumulados y última descarga.
+En Jornada, «Recuperar última jornada» abre una advertencia y una confirmación:
+reabre la última cerrada al momento anterior al cierre, descarta la abierta si
+existe y conserva el catálogo vigente. Los nuevos archivos requieren volver a cerrar.
+
+Se mantiene una sola instancia y un solo worker. Los datos están excluidos de Git.
+Un directorio o volumen persistente no sustituye una copia de seguridad.
+Consultar [persistencia y recuperación](docs/PERSISTENCIA.md) antes de restaurar datos.
+Los informes se agrupan por versión en [docs/tests](docs/tests/README.md).

@@ -1,6 +1,6 @@
 # Resultados de pruebas por versión
 
-Actualizado: **2026-10-02T13:55:35Z** (UTC).
+Actualizado: **2026-10-10T19:44:30Z** (UTC).
 
 Los informes se agrupan según la versión evaluada. Cada archivo conserva su
 fecha UTC, alcance y resultado PASS/FAIL. Son registros históricos: sus cantidades
@@ -10,6 +10,11 @@ no se suman ni implican que una versión en desarrollo esté terminada.
 | --- | --- | --- |
 | v0.1 | [v0_1/](v0_1/) | Revisión final PASS: 22 pruebas funcionales e integrales de jornadas, autores, órdenes, artículos, estadísticas y cierre JSON. |
 | v0.2, revisión final | [v0_2/](v0_2/) | Suite completa: 285 PASS (215 unitarias/integrales y 70 de navegador), en 205,96 s. Incluye flujo principal, interfaz desde 320 px, exportación JSON/dos CSV/ZIP y regresiones de validación numérica, formularios antiguos y categorías. |
+| v0.3, primer bloque | [v0_3/](v0_3/) | 311 PASS: persistencia y rollback, incluidos flujos de navegador desde 320 px. Los otros bloques siguen pendientes. |
+
+## v0.3
+
+- [Persistencia y rollback: 311 PASS](v0_3/PERSISTENCIA_ROLLBACK_20261010T194430Z.md).
 
 ## v0.1
 
@@ -24,7 +29,7 @@ no se suman ni implican que una versión en desarrollo esté terminada.
 ## v0.2
 
 Incluye las comprobaciones de transición posteriores a la revisión de v0.1 y
-las funcionalidades y correcciones de la versión actual.
+las funcionalidades y correcciones evaluadas en esa versión.
 
 - [Revisión final de v0.2: 285 PASS](v0_2/V0_2_FINAL_REVIEW_20261002T133719Z.md).
 - El mismo informe registra 120 regresiones PASS tras fijar los metadatos de API

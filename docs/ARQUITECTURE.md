@@ -1,17 +1,21 @@
-# Arquitectura de Order Manager — v0.2
+# Arquitectura de Order Manager — v0.3 en desarrollo
 
 ## Propósito
 
-Aplicación web para que un supervisor gestione jornadas, autores, órdenes y ventas. La v0.2 continúa el MVP integrado; v1.0 será la versión final prevista.
-
-El alcance implementado y su revisión final se describen en el
-[resumen de v0.2](version/v0_2.md). La publicación se registra por separado.
-La [validación final](tests/v0_2/V0_2_FINAL_REVIEW_20261002T133719Z.md)
-confirmó 285 pruebas PASS, incluidas 70 de navegador.
+Aplicación web para que un supervisor gestione jornadas, autores, órdenes y ventas.
+La v0.3 comienza con persistencia recuperable; v1.0 será el MVP final previsto.
+El [resumen de v0.3](version/v0_3.md) distingue lo implementado de lo pendiente.
+La validación histórica de v0.2 permanece en sus informes de versión.
 
 ## Componentes y datos
 
-El supervisor usa una interfaz HTML/CSS desde el navegador. FastAPI, ejecutado con Uvicorn sobre Python, gestiona la lógica de la aplicación. La jornada activa, sus órdenes, autores, registros y estadísticas se conservan en memoria. Al cerrar la jornada se genera una exportación JSON y se conserva temporalmente la última para permitir otra descarga durante la misma ejecución. Las estadísticas globales y el inventario inicial de artículos se guardan en archivos JSON separados y se recuperan al reiniciar la aplicación.
+Navegador → HTML/CSS → FastAPI/Uvicorn → Store → revisiones JSON bajo `DATA_DIR`.
+La jornada, el catálogo, los acumulados, el snapshot previo al último cierre y
+la última exportación se confirman como un conjunto coherente por acción válida.
+La memoria sirve para trabajar; al reiniciar se carga la revisión confirmada.
+`persistence.py` coordina archivos y manifiestos; `state_validation.py` valida
+integridad de negocio y relaciones. `Store` conserva la lógica de órdenes y jornadas.
+Consultar [persistencia y recuperación](PERSISTENCIA.md) para formato y operación.
 
 La aplicación ASGI se define en `order_manager/api.py`. El `api.py` de la raíz
 solo expone ese mismo objeto `app` para herramientas que requieren un punto de
@@ -20,22 +24,20 @@ entrada en la raíz del repositorio.
 ## Módulos
 
 - **Jornadas y autores:** creación, consulta, cierre y descarte de jornadas; autores asociados a cada jornada.
-- **Órdenes y artículos:** cada orden pertenece a un autor y admite varias líneas de artículos con cantidad y precio unitario. El backend calcula los subtotales y el total. Se pueden consultar, modificar y eliminar órdenes. El catálogo inicial reúne categorías, subcategorías y productos persistentes; el formulario los agrupa para seleccionarlos. Los artículos creados en órdenes se ofrecen temporalmente para nuevas órdenes mientras alguna orden vigente los facture.
+- **Órdenes y artículos:** cada orden pertenece a un autor y admite varias líneas de artículos con cantidad y precio unitario. El backend calcula los subtotales y el total. Se pueden consultar, modificar y eliminar órdenes. El catálogo inicial reúne categorías, subcategorías y productos persistentes; el formulario los agrupa para seleccionarlos. Los artículos creados en operaciones válidas se incorporan al catálogo persistente, aunque después se elimine su orden.
 - **Artículos vendidos:** la sección Artículos muestra el «Catálogo vendido de la jornada», calculado desde las órdenes actuales y ordenado por unidades vendidas. Los artículos disponibles para nuevas órdenes se administran en una lista separada.
 - **Ventas y estadísticas:** las cantidades de las órdenes suman unidades vendidas; el inventario inicial es un catálogo sin existencias físicas. Las órdenes, totales y artículos facturados se muestran por autor, además de los totales de jornada. Los acumulados globales conservan jornadas cerradas, órdenes, unidades e importe, con desglose por artículo y categoría.
 - **Registros y exportación:** se registran acciones relevantes del supervisor y se exporta la jornada en JSON y dos CSV, individualmente o juntos en ZIP.
 
 ## Persistencia del catálogo
 
-`data/inventory.json` se crea con los productos iniciales si aún no existe. Las altas,
-ediciones y bajas realizadas en la administración del catálogo se escriben de
-forma atómica. Cada jornada toma el catálogo vigente; los cambios de precio
-afectan las nuevas líneas de orden, pero las líneas ya guardadas conservan su
-precio y total. Un producto sin precio requiere completarlo al facturarlo.
-Los artículos creados dentro de órdenes se derivan de las órdenes actuales:
-desaparecen de las opciones al borrar o modificar su última orden. Si la
-jornada se cierra correctamente, permanecen en el JSON exportado y en los
-acumulados globales de ventas.
+El catálogo vive en `inventory.json` dentro de la revisión referenciada por
+`current.json`. Una instalación nueva usa el catálogo inicial; la migración
+valida y conserva los JSON originales. Altas, ediciones y bajas se confirman
+junto con el estado de jornada. Las nuevas líneas usan el catálogo vigente,
+mientras las líneas guardadas conservan sus precios y totales. Los artículos
+creados en órdenes se guardan tras validar la operación completa y permanecen
+al eliminar sus órdenes o descartar la jornada.
 
 Las altas y ediciones del catálogo reutilizan la escritura de categorías y
 subcategorías existentes cuando los nombres solo difieren en mayúsculas.
@@ -58,7 +60,7 @@ los datos del formulario; guardar una orden conserva su copia del precio usado.
 Al editar una orden, los desplegables también admiten las categorías y
 subcategorías originales de sus líneas, aunque hayan llegado por la API y no
 pertenezcan al catálogo inicial. Estas opciones se agregan a una copia para ese
-editor; no se incorporan al inventario persistente. Las altas desde el formulario
+editor; las altas válidas de artículos por API también conservan su taxonomía en el inventario. Las altas desde el formulario
 siguen usando las categorías disponibles del catálogo.
 
 Las cantidades y precios rechazan booleanos y tienen un máximo técnico común
@@ -71,7 +73,8 @@ o cerrar la jornada; los subtotales y totales siguen calculándose con enteros.
 Al guardar una orden se obtiene una sola vez el catálogo disponible, únicamente
 si alguna línea lo usa. La consulta se reutiliza por identificador durante esa
 operación, bajo el bloqueo de la jornada; se reconstruye en el siguiente guardado
-para respetar cambios de precios y la disponibilidad de artículos temporales.
+para respetar cambios de catálogo en operaciones posteriores. Al editar una línea
+guardada se conserva su precio salvo modificación explícita.
 
 En móvil, las acciones finales se apilan y separan. «Guardar orden» ocupa el ancho
 disponible y tiene mayor tamaño que «Agregar artículo» (verde) y «Quitar artículo»
@@ -89,8 +92,8 @@ Las no facturadas aparecen etiquetadas y sin importe en Órdenes y Jornada,
 conservan autor, ID, número y artículos, y generan un registro identificable.
 El JSON mantiene `status: "not_billed"` y sus líneas. Los resúmenes de ventas,
 promedios, catálogo vendido y subtotales por bloques excluyen estas órdenes.
-Los artículos que aparezcan solo en ellas no se incorporan como temporales
-reutilizables. Cambiar el tipo conserva el ID/número y recalcula los resultados;
+Sus artículos nuevos también se incorporan al catálogo persistente, con precio
+opcional, sin aumentar las ventas. Cambiar el tipo conserva el ID/número y recalcula los resultados;
 convertirla en venta requiere precios válidos.
 
 ## Consulta de órdenes
@@ -145,9 +148,9 @@ valida esa relación e ignora las selecciones de categorías inactivas. Los erro
 conservan nombre, precio, selección y búsqueda. Las acciones de Artículos se
 centran hasta 650 px, con colores distintos, separación y altura mínima de 44 px.
 
-Los temporales ofrecen «Ver órdenes que lo usan». Esa vista identifica el producto
+Los artículos del catálogo ofrecen «Ver órdenes que lo usan». Esa vista identifica el producto
 por categoría, subcategoría y nombre, y permite acceder a las acciones de sus órdenes.
-Modificar o eliminar las órdenes recalcula las ventas y la disponibilidad temporal.
+Modificar o eliminar las órdenes recalcula las ventas y conserva los artículos del catálogo.
 Si un enlace ya no corresponde a un producto vigente, la vista informa esa situación.
 
 Hasta 650 px, las tablas de Artículos y el listado de Órdenes se presentan como fichas
@@ -215,34 +218,34 @@ muestra solo la correspondiente al ancho disponible.
 
 En los artículos del inventario, «Acciones» despliega Editar y Eliminar, con
 colores distintos y controles de al menos 44 px. La búsqueda, filtros y página
-se conservan al realizar esas acciones. Los artículos temporales mantienen
-«Ver órdenes que lo usan» y se administran desde sus órdenes.
+se conservan al realizar esas acciones. «Ver órdenes que lo usan» permite
+consultar las órdenes correspondientes sin alterar el artículo.
 
 ## Registros
 
-Los movimientos de la jornada activa se muestran del más reciente al más antiguo,
+Los movimientos confirmados de todas las jornadas se muestran del más reciente al más antiguo,
 con 2 a 5 filas por página según el ancho y Anterior/Siguiente. En móvil se presentan
 como fichas con Fecha, Acción y Detalle. La paginación no añade eventos ni modifica
-su contenido; la exportación incluye todos los registros de la jornada.
+su contenido; cada exportación incluye los registros propios de esa jornada.
 El selector de descarga de la última jornada cerrada permanece separado del listado paginado.
 En Registros se presenta dentro de «Descargar última jornada», un desplegable
 cerrado por defecto. Se abre o cierra con toque o teclado, sin afectar los archivos.
 
 ## Cierre y descarte
 
-«Cerrar y contabilizar ventas» prepara la exportación JSON, incorpora la jornada una sola vez a las estadísticas globales y luego permite limpiar sus datos temporales. Si falla la exportación o el guardado, la jornada permanece disponible para reintentar.
+«Cerrar y contabilizar ventas» publica juntos exportación, acumulados, snapshot
+previo y ausencia de jornada activa. Un fallo antes de publicar conserva la
+jornada; un resultado incierto después de publicar bloquea operaciones hasta verificarlo.
 
 El JSON contiene metadatos, autores, órdenes, estadísticas y eventos de la jornada,
 además de `new_articles` y `price_changes`. Excluye la copia del inventario inicial
 y el contador interno. Cada línea de venta conserva su cantidad, precio y subtotal;
 los cambios posteriores de catálogo no modifican esos valores. La actividad de
-altas y precios se registra en memoria tras confirmar el guardado y se conserva
-si el cierre falla. El [formato de descarga](version/v0_2.md#json-descargado) detalla los campos.
+altas y precios se conserva en las revisiones persistentes, incluso si el cierre falla. El [formato de descarga](version/v0_2.md#json-descargado) detalla los campos.
 
 Tras confirmar el cierre, la interfaz redirige mediante GET a un selector con
 radios: CSV resumen, CSV detallado, JSON completo y Todo en ZIP. El usuario
-descarga la opción elegida y puede volver al Dashboard. No hay descarga ni
-redirección automática. Registros ofrece el mismo selector. Recargar esa página
+descarga la opción elegida y puede volver al Dashboard. No hay descarga automática. Registros ofrece el mismo selector. Recargar esa página
 o repetir la descarga no vuelve a contabilizar ventas.
 
 `order_manager/export_formats.py` construye los formatos a demanda desde el JSON
@@ -257,27 +260,40 @@ los dos CSV y el JSON. Se generan con la biblioteca estándar de Python.
 `/api/exports/last` mantiene JSON por defecto y acepta `format` para los demás
 formatos. El ID de jornada impide entregar otra exportación cuando la anterior
 fue reemplazada. La última descarga se conserva hasta el siguiente cierre
-correcto o el reinicio; no es un historial persistente.
+correcto o su recuperación, incluso tras reiniciar. `close_id` distingue cierres
+diferentes de una misma jornada; el selector incluye ese ID. Se conserva solo
+la última exportación, sin un archivo consultable de todas las descargas.
 
-«Descartar jornada sin contabilizar ventas» elimina sus datos temporales sin aumentar las estadísticas globales. Ambas acciones requieren confirmaciones claras y diferentes para evitar errores.
+«Descartar jornada sin contabilizar ventas» confirma la ausencia de jornada activa
+sin aumentar acumulados y conserva sus altas de inventario y eventos.
+
+«Recuperar última jornada» abre una advertencia con el cierre objetivo y la jornada
+actual que se descartará. El servidor valida ID de cierre, revisión y jornada
+confirmados. El rollback restaura el estado previo al cierre y sus acumulados,
+conserva el catálogo vigente y consume la recuperación. Las órdenes vuelven a ser
+editables; el siguiente cierre genera snapshot y archivos nuevos y contabiliza
+una vez. El historial conserva cierres, descartes y recuperación. Mientras la
+jornada recuperada esté abierta, el selector informa que requiere otro cierre.
 
 ## Evolución prevista
 
 El supervisor opera la plataforma sin autenticación. La autenticación y la persistencia de permisos se abordarán en una actualización menor posterior. MariaDB se evaluará después de v1.0.
 
-Jinja2 queda prevista para v0.3. En v0.2 el HTML se construye desde Python y
+Jinja2 queda pendiente dentro de v0.3. Actualmente el HTML se construye desde Python y
 la presentación adaptable usa CSS y controles nativos de HTML.
 
 ## Límites de ejecución
 
-El estado temporal y el bloqueo `RLock` pertenecen a un único proceso. La
+El estado de trabajo y el bloqueo `RLock` pertenecen a un único proceso. La
 aplicación requiere una sola instancia y un solo worker; varias instancias o
 workers no compartirían la jornada ni coordinarían las escrituras locales.
-El directorio `data/` necesita permisos de escritura. Reiniciar elimina la
-jornada activa y la última exportación, pero conserva catálogo y acumulados.
+La ruta `DATA_DIR` necesita permisos de escritura. Reiniciar restaura la última
+revisión confirmada, incluida jornada y descarga. Compartir un volumen no habilita
+múltiples escritores. Los fallos físicos requieren copias de seguridad externas.
 
-Los archivos descargados contienen una jornada completa; la aplicación no
-mantiene un archivo histórico persistente de órdenes ni exportaciones. Los
+Los archivos descargados contienen una jornada completa. La aplicación conserva
+la última exportación y el snapshot recuperable; no ofrece un archivo histórico
+consultable de todas las órdenes ni descargas. Los
 acumulados globales son resúmenes de ventas. La validación de navegador usa
 Chromium emulado desde 320 px; no acredita dispositivos físicos ni otros motores.
 
@@ -285,6 +301,5 @@ Chromium emulado desde 320 px; no acredita dispositivos físicos ni otros motore
 
 - [FastAPI como servidor](decisions/ADR-001-FastApi.md).
 - [Persistencia local en JSON](decisions/ADR-002-Json-persistance.md).
-- [Exportación CSV](decisions/ADR-003-csv-export.md).
+- [Exportación CSV y selección de descargas](decisions/ADR-003-csv-export.md).
 - [Pruebas funcionales en móviles](decisions/ADR-004-mobile-testing.md).
-- [Estructura CSV y selección de descargas](decisions/ADR-005-csv-formats-downloads.md).

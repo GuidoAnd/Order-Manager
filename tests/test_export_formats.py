@@ -151,7 +151,7 @@ def test_download_endpoint_is_repeatable_without_recounting(tmp_path, format):
     assert '<details class="export-downloads" open' not in records
     store = app.state.store
     original = store.get_globals()
-    disk = store.global_file.read_bytes()
+    disk = store.storage.component_path("global_stats").read_bytes()
     url = f"/api/exports/last?journey_id={journey_id}&format={format}"
     for _ in range(2):
         status, headers, body = request(app, "GET", url, raw=True)
@@ -161,7 +161,7 @@ def test_download_endpoint_is_repeatable_without_recounting(tmp_path, format):
             {"json": "application/json", "zip": "application/zip"}.get(format, "text/csv")
         )
     assert store.get_globals() == original
-    assert store.global_file.read_bytes() == disk
+    assert store.storage.component_path("global_stats").read_bytes() == disk
     store.create_journey("Siguiente")
     assert request(app, "GET", url, raw=True)[0] == 200
     store.close_journey()
@@ -177,4 +177,4 @@ def test_invalid_format_missing_export_and_restart(tmp_path):
     assert request(app, "GET", "/api/exports/last?format=invalid")[0] == 422
     assert request(app, "GET", "/api/exports/last", raw=True)[2] == payload
     new_app = make_app(tmp_path / "globals.json")
-    assert request(new_app, "GET", "/api/exports/last?format=zip", raw=True)[0] == 404
+    assert request(new_app, "GET", "/api/exports/last?format=zip", raw=True)[0] == 200

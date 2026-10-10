@@ -40,7 +40,10 @@ def test_not_billed_orders_keep_articles_without_any_amount(active, source):
     assert order["lines"][0]["unit_price"] is None
     assert order["lines"][0]["subtotal"] is None
     assert order["lines"][0]["name"] and order["lines"][0]["quantity"] > 0
-    assert store.get_inventory() == before
+    if source == "new":
+        assert len(store.get_inventory()["articles"]) == len(before["articles"]) + 1
+    else:
+        assert store.get_inventory() == before
     assert store.get_summary()["orders"] == store.get_summary()["units"] == 0
     assert store.get_events()[-1]["action"] == "order_not_billed"
     assert order["id"] in store.get_events()[-1]["detail"]
@@ -61,7 +64,7 @@ def test_statistics_catalog_subtotals_and_export_exclude_non_sales(active):
     assert stats["by_author"][author["id"]] == expected["by_author"][author["id"]]
     assert stats["by_author"][other["id"]]["orders"] == 0
     assert stats["by_author"][other["id"]]["average"] == 0
-    assert not any(item["name"] == "Regalo" for item in store.get_available_articles())
+    assert any(item["name"] == "Regalo" for item in store.get_available_articles())
     _, _, html = request(app, "GET", "/jornada")
     gift_orders = html.split(f'id="author-orders-{other["id"]}"', 1)[1].split('</div>', 1)[0]
     assert "No facturada (regalo/cancelada)" in gift_orders and "Sin importe" in gift_orders
@@ -70,7 +73,7 @@ def test_statistics_catalog_subtotals_and_export_exclude_non_sales(active):
     exported = json.loads(store.close_journey())
     assert exported["orders"] == [sale, gift]
     assert exported["statistics"] == stats
-    assert all(item["name"] != "Regalo" for item in exported["new_articles"])
+    assert any(item["name"] == "Regalo" for item in exported["new_articles"])
     assert store.get_globals()["orders"] == 1
     assert store.get_globals()["units"] == 2 and store.get_globals()["revenue"] == 200
 
@@ -133,12 +136,12 @@ def test_forms_keep_status_context_and_ignore_prices(active):
     assert len(app.state.store.get_journey()["orders"]) == 1
 
 
-def test_billed_to_unbilled_removes_temporary_availability_and_keeps_order(active):
+def test_billed_to_unbilled_keeps_inventory_and_order(active):
     app, author = active
     store = app.state.store
     order = store.save_order(author["id"], [raw_line(unit_price=100)])
     store.save_order(author["id"], [raw_line()], order["id"], status="not_billed")
-    assert not any(item["name"] == "Regalo" for item in store.get_available_articles())
+    assert any(item["name"] == "Regalo" for item in store.get_available_articles())
     _, _, html = request(app, "GET", f"/ordenes?edit={order['id']}")
     assert 'value="not_billed" checked' in html
     assert 'value="None"' not in html

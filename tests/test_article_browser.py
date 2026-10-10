@@ -102,8 +102,8 @@ def test_temporary_article_links_only_to_orders_using_its_full_identity(app):
     store.save_order(ana["id"], [{**line, "category": "Postres", "subcategory": "Golosinas"}])
     _, _, page = request(app, "GET", "/articulos?q=especial&category=Otros")
     rows = available_rows(page)
-    assert "Temporal de esta jornada" in rows
-    assert 'name="article_id"' not in rows
+    assert "Temporal de esta jornada" not in rows
+    assert 'name="article_id"' in rows
     link = unescape(re.search(r'href="([^"]+)">Ver órdenes que lo usan', rows).group(1))
     status, _, orders = request(app, "GET", link)
     assert status == 200
@@ -116,7 +116,7 @@ def test_temporary_article_links_only_to_orders_using_its_full_identity(app):
     store.delete_order(second["id"])
     status, _, stale = request(app, "GET", link)
     assert status == 200
-    assert "El artículo ya no está presente" in stale
+    assert "No hay órdenes que usen este artículo" in stale
     assert 'name="edit"' not in stale
 
 

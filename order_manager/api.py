@@ -1,6 +1,7 @@
 """API HTTP y rutas de interfaz del gestor de órdenes."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import parse_qs, urlencode
@@ -42,6 +43,12 @@ class JourneyInput(BaseModel):
 
 class JourneyConfirmation(BaseModel):
     journey_id: str = Field(min_length=1)
+
+
+class RecoveryConfirmation(BaseModel):
+    close_id: str = Field(min_length=1)
+    revision: str = Field(min_length=1)
+    active_id: str = ""
 
 
 class ArticleInput(BaseModel):
@@ -121,14 +128,33 @@ def order_form_lines(rows: list[dict], inventory: dict) -> list[dict]:
     return lines
 
 
-def make_app(global_file: Path | None = None) -> FastAPI:
-    app = FastAPI(title="Order Manager", version="0.2")
-    store = Store(global_file or ROOT / "data" / "global_stats.json")
+def make_app(global_file: Path | None = None, *, data_dir: Path | None = None) -> FastAPI:
+    if global_file is not None and data_dir is not None:
+        raise ValueError("Indique global_file o data_dir, no ambos.")
+    directory = Path(data_dir or os.environ.get("DATA_DIR") or ROOT / "data").resolve()
+    app = FastAPI(title="Order Manager", version="0.3")
+    store = Store(global_file or directory / "global_stats.json")
     app.state.store = store
 
     @app.exception_handler(DomainError)
-    async def domain_error(_request: Request, error: DomainError):
+    async def domain_error(request: Request, error: DomainError):
+        if not request.url.path.startswith("/api/"):
+            return HTMLResponse(web.layout("Almacenamiento no disponible", web.alert(str(error))),
+                                status_code=error.status)
         return JSONResponse({"detail": str(error)}, status_code=error.status)
+
+    @app.get("/api/storage")
+    def storage_status():
+        return {"available": not store.storage.blocked, "warnings": store.storage.warnings,
+                "revision": store.storage.revision}
+
+    @app.get("/api/journey/recovery")
+    def recovery_info():
+        return store.recovery_info()
+
+    @app.post("/api/journey/recover")
+    def recover_journey(data: RecoveryConfirmation):
+        return store.recover_journey(data.close_id, data.revision, data.active_id)
 
     @app.get("/api/journey")
     def get_journey():
@@ -156,8 +182,9 @@ def make_app(global_file: Path | None = None) -> FastAPI:
         )
 
     @app.get("/api/exports/last")
-    def latest_export(journey_id: str | None = None, format: ExportFormat = "json"):
-        journey_id, payload = store.get_last_export(journey_id)
+    def latest_export(journey_id: str | None = None, format: ExportFormat = "json",
+                      close_id: str | None = None):
+        journey_id, payload = store.get_last_export(journey_id, close_id)
         filename, media_type, content = download_file(journey_id, payload, format)
         return Response(
             content,
@@ -279,15 +306,15 @@ def make_app(global_file: Path | None = None) -> FastAPI:
         return web.events_page(store, page=page)
 
     @app.get("/exportaciones", response_class=HTMLResponse)
-    def exports_page(journey_id: str):
+    def exports_page(journey_id: str, close_id: str | None = None):
         try:
-            store.get_last_export(journey_id)
+            store.get_last_export(journey_id, close_id)
         except DomainError as error:
             return HTMLResponse(web.layout("Exportación no disponible", (
                 f'<p role="alert">{web.h(error)}</p>'
                 '<a class="button quiet" href="/">Volver al Dashboard</a>'
             )), status_code=error.status)
-        return web.closed_journey_page(journey_id)
+        return web.closed_journey_page(journey_id, store._export_close_id)
 
     @app.get("/confirmar/{action}", response_class=HTMLResponse)
     def confirm_page(action: str):
@@ -322,9 +349,12 @@ def make_app(global_file: Path | None = None) -> FastAPI:
                 journey_id = values.get("journey_id", "")
                 store.close_journey(journey_id)
                 return RedirectResponse(
-                    "/exportaciones?" + urlencode({"journey_id": journey_id}),
+                    "/exportaciones?" + urlencode({"journey_id": journey_id, "close_id": store._export_close_id}),
                     status_code=303,
                 )
+            elif action == "recover" and values.get("confirm") == "yes":
+                store.recover_journey(values.get("close_id", ""), values.get("revision", ""),
+                                      values.get("active_id", ""))
             elif action == "discard" and values.get("confirm") == "yes":
                 store.discard_journey(values.get("journey_id", ""))
             else:
