@@ -36,7 +36,7 @@ async def check_review_fixes(tmp_path, viewport):
         page = await context.new_page()
         page.set_default_timeout(5000)
         try:
-            await page.goto(f"http://order-manager.test/ordenes?edit={order['id']}")
+            await page.goto(f"http://127.0.0.1/ordenes?edit={order['id']}")
             assert await page.locator('select[name="category_0"]').input_value() == "Categoría original"
             assert await page.locator(f'select[name="subcategory_0_{position}"]').input_value() == "Subcategoría original"
             assert await page.locator('select[name="category_1"]').input_value() == "Cafetería"
@@ -59,7 +59,7 @@ async def check_review_fixes(tmp_path, viewport):
             assert store.get_inventory() == inventory_before
             await assert_layout(page, viewport)
 
-            await page.goto("http://order-manager.test/jornada")
+            await page.goto("http://127.0.0.1/jornada")
             editor = page.locator(".journey-name-editor")
             await editor.locator("summary").click()
             await editor.get_by_label("Nombre de la jornada").fill("Cambio de la jornada anterior")

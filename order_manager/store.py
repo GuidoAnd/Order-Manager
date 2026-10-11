@@ -16,6 +16,7 @@ from .seed_inventory import initial_inventory
 from .persistence import RevisionStorage, StorageError
 from .state_validation import validate_state
 from .runtime_logging import LogConfig, RuntimeLog
+from .input_validation import MAX_TAXONOMY, bounded_text
 
 
 MAX_INPUT_INTEGER = 2**63 - 1
@@ -25,6 +26,13 @@ class DomainError(Exception):
     def __init__(self, message: str, status: int = 400):
         super().__init__(message)
         self.status = status
+
+
+def business_text(value: str, label: str, maximum: int = 200) -> str:
+    try:
+        return bounded_text(value, label, maximum)
+    except ValueError as error:
+        raise DomainError(str(error)) from None
 
 
 def bounded_integer(value: object, minimum: int, message: str) -> int:
@@ -353,7 +361,7 @@ class Store:
         with self.lock:
             if self.journey is not None:
                 raise DomainError("Cierre o descarte la jornada activa antes de abrir otra.", 409)
-            title = title.strip()
+            title = business_text(title, "Nombre de jornada")
             if not title:
                 raise DomainError("El nombre de la jornada es obligatorio.")
             self.journey = {
@@ -378,7 +386,7 @@ class Store:
     def rename_journey(self, title: str, expected_id: str | None = None) -> dict:
         with self.lock:
             journey = self._active(expected_id)
-            title = title.strip()
+            title = business_text(title, "Nombre de jornada")
             if not title:
                 raise DomainError("El nombre de la jornada es obligatorio.")
             journey["title"] = title
@@ -388,7 +396,7 @@ class Store:
     @mutating
     def add_author(self, name: str) -> dict:
         with self.lock:
-            name = name.strip()
+            name = business_text(name, "Nombre del autor")
             if not name:
                 raise DomainError("El nombre del autor es obligatorio.")
             j = self._active()
@@ -404,7 +412,7 @@ class Store:
         with self.lock:
             j = self._active()
             item = self._find(j["authors"], author_id, "Autor")
-            name = name.strip()
+            name = business_text(name, "Nombre del autor")
             if not name or any(a["id"] != author_id and a["name"].casefold() == name.casefold()
                                for a in j["authors"]):
                 raise DomainError("Nombre de autor vacío o duplicado.")
@@ -444,7 +452,8 @@ class Store:
     @staticmethod
     def _article_data(data: dict, allow_empty_price: bool = False) -> dict:
         values = {
-            key: str(data.get(key) or "").strip()
+            key: business_text(data.get(key) or "", key,
+                               200 if key == "name" else MAX_TAXONOMY)
             for key in ("name", "category", "subcategory")
         }
         if not all(values.values()):

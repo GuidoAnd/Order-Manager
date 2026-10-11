@@ -148,7 +148,7 @@ async def check_order_browser(tmp_path, viewport):
         await context.route("**/*", lambda route: serve_asgi(app, route))
         page = await context.new_page()
         try:
-            await page.goto("http://order-manager.test/ordenes")
+            await page.goto("http://127.0.0.1/ordenes")
             views = page.locator("#order-results .order-page-size:visible")
             rows = page.locator("#order-results tbody tr:visible")
             assert await views.count() == 1

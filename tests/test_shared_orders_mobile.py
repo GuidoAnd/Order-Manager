@@ -31,7 +31,7 @@ async def check_shared_page(tmp_path, viewport):
         page = await context.new_page()
         page.set_default_timeout(5000)
         try:
-            await page.goto("http://order-manager.test/ordenes")
+            await page.goto("http://127.0.0.1/ordenes")
             view = page.locator("#order-results .order-page-size:visible")
             rows = view.locator("tbody tr")
             assert await view.count() == 1

@@ -128,7 +128,7 @@ async def check_tables(tmp_path, viewport):
         page = await context.new_page()
         page.set_default_timeout(5000)
         try:
-            await page.goto("http://order-manager.test/articulos?q=caf%C3%A9&page=2")
+            await page.goto("http://127.0.0.1/articulos?q=caf%C3%A9&page=2")
             sold = page.locator("#sold-articles .table-page-view:visible")
             assert await sold.count() == 1
             assert await sold.locator("tbody tr").count() == size
@@ -150,7 +150,7 @@ async def check_tables(tmp_path, viewport):
             await sold.get_by_role("link", name="Anterior").click()
             for link in await sold.get_by_role("link").all():
                 assert (await link.bounding_box())["height"] >= 44
-            await page.goto("http://order-manager.test/registros")
+            await page.goto("http://127.0.0.1/registros")
             events = page.locator("#journey-events .table-page-view:visible")
             assert await events.count() == 1
             assert await events.locator("tbody tr").count() == size

@@ -31,7 +31,7 @@ def asgi_json(app, method, path, payload=None):
         "query_string": b"",
         "headers": [(b"content-type", b"application/json")],
         "scheme": "http",
-        "server": ("test", 80),
+        "server": ("127.0.0.1", 80),
         "client": ("test", 1),
         "root_path": "",
     }

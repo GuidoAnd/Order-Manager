@@ -155,7 +155,7 @@ async def run_mobile_workflow(tmp_path, viewport):
         page = await context.new_page()
         page.set_default_timeout(5000)
         try:
-            await page.goto("http://order-manager.test/")
+            await page.goto("http://127.0.0.1/")
             assert await page.get_by_role("heading", name="Dashboard").is_visible()
             await assert_layout(page, viewport)
 

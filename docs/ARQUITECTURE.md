@@ -310,3 +310,21 @@ Chromium emulado desde 320 px; no acredita dispositivos físicos ni otros motore
 - [Persistencia local en JSON](decisions/ADR-002-Json-persistance.md).
 - [Exportación CSV y selección de descargas](decisions/ADR-003-csv-export.md).
 - [Pruebas funcionales en móviles](decisions/ADR-004-mobile-testing.md).
+- [Seguridad local y evolución](decisions/ADR-005-seguridad-local-y-escalabilidad.md).
+
+## Seguridad local
+
+Una instancia utilizada desde el mismo dispositivo. Hosts admitidos: localhost,
+127.0.0.1 y ::1; mantener la escucha en loopback. Solicitudes limitadas a 64 KiB
+durante recepción; ruta y consulta de hasta 8 KiB. Validación común de textos
+nuevos, token por instancia en formularios POST, origen exacto, API mutable con
+JSON, sin CORS y cabeceras compatibles con estilos embebidos. Las respuestas
+de negocio no se almacenan en caché. Errores de validación sin entradas originales.
+
+El token no identifica al operador; el acceso directo a la API continúa sin
+autenticación. Antes de red local: autenticación, sesiones, HTTPS y detección de
+conflictos. Antes de nube: permisos, secretos, copias verificadas y revisión de
+persistencia, concurrencia y despliegue. Mantener una instancia y un worker.
+
+Consultar [seguridad local](SEGURIDAD.md) y el
+[ADR de seguridad y evolución](decisions/ADR-005-seguridad-local-y-escalabilidad.md).

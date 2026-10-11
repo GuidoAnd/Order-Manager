@@ -23,7 +23,7 @@ async def workflow(tmp_path, viewport):
         page = await browser.new_page(viewport={"width": viewport[0], "height": viewport[1]})
         await page.route("**/*", lambda route: serve_asgi(app, route))
         try:
-            await page.goto("http://test/jornada")
+            await page.goto("http://127.0.0.1/jornada")
             await page.get_by_role("link", name="Recuperar última jornada").click()
             await page.get_by_role("heading", name="Recuperar jornada", exact=True).wait_for()
             assert await page.get_by_text("Jornada a recuperar", exact=True).is_visible()
@@ -39,11 +39,11 @@ async def workflow(tmp_path, viewport):
             assert store.get_journey()["id"] == target["id"]
             assert store.get_globals()["journeys"] == 0
             await assert_layout(page, viewport)
-            await page.goto("http://test/registros")
+            await page.goto("http://127.0.0.1/registros")
             assert await page.get_by_text("Los archivos de la jornada recuperada estarán disponibles cuando vuelva a cerrarse.").is_visible()
             assert await page.get_by_role("button", name="Descargar", exact=True).count() == 0
             await assert_layout(page, viewport)
-            await page.goto("http://test/jornada")
+            await page.goto("http://127.0.0.1/jornada")
             await page.get_by_role("link", name="Cerrar y contabilizar ventas").click()
             await page.get_by_role("button", name="Cerrar ventas y elegir descarga CSV / JSON / ZIP").click()
             assert await page.get_by_role("button", name="Descargar", exact=True).is_visible()

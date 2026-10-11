@@ -59,7 +59,7 @@ async def check_article_list(tmp_path, viewport, stylesheet_state):
         await context.route("**/*", route_request)
         page = await context.new_page()
         try:
-            await page.goto("http://order-manager.test/articulos")
+            await page.goto("http://127.0.0.1/articulos")
             if viewport[0] == 320 and stylesheet_state == "previous":
                 # Reproduce el fallo: HTML con cuatro vistas y CSS sin las reglas nuevas.
                 previous_html = web.articles_page(store).replace(
@@ -67,7 +67,7 @@ async def check_article_list(tmp_path, viewport, stylesheet_state):
                 )
                 await page.set_content(previous_html)
                 assert await page.locator(".article-page-size:visible").count() == 4
-                await page.goto("http://order-manager.test/articulos")
+                await page.goto("http://127.0.0.1/articulos")
 
             views = page.locator(".article-page-size:visible")
             rows = page.locator("#available-articles tbody tr:visible")

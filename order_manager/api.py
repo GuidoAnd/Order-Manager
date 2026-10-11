@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import os
 import logging
+from secrets import token_urlsafe
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import parse_qs, urlencode
 
 from fastapi import FastAPI, Query, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -24,6 +26,8 @@ from .export_formats import ExportFormat, download_file
 from .store import MAX_INPUT_INTEGER, DomainError, Store
 from .runtime_logging import LogConfig, RequestDiagnostics
 from .health import HealthCheck
+from .security import LocalSecurity, MAX_FIELDS
+from .input_validation import bounded_text
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -149,6 +153,7 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
 
     app = FastAPI(title="Order Manager", version="0.3", lifespan=lifespan)
     app.add_middleware(RequestDiagnostics, runtime=store.runtime_log)
+    app.add_middleware(LocalSecurity, token=token_urlsafe(32), runtime=store.runtime_log)
     app.state.store = store
     health = HealthCheck(store)
     app.state.health = health
@@ -157,6 +162,12 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
     def health_status():
         result = health.check()
         return JSONResponse(result, status_code=503 if result["status"] == "unavailable" else 200)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, error: RequestValidationError):
+        details = [{"loc": list(item["loc"]), "msg": item["msg"], "type": item["type"]}
+                   for item in error.errors()]
+        return JSONResponse({"detail": details}, status_code=422)
 
     @app.exception_handler(DomainError)
     async def domain_error(request: Request, error: DomainError):
@@ -352,7 +363,13 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
         raw = await request.body()
         if len(raw) > 65536:
             raise DomainError("Formulario demasiado grande.", 413)
-        parsed = parse_qs(raw.decode("utf-8"), keep_blank_values=True)
+        parsed = parse_qs(raw.decode("utf-8"), keep_blank_values=True,
+                          max_num_fields=MAX_FIELDS, errors="strict")
+        for key in ("q", "filter_category", "filter_subcategory"):
+            try:
+                bounded_text(parsed.get(key, [""])[-1], "Filtro")
+            except ValueError as error:
+                raise DomainError(str(error)) from None
         return {key: values[-1] for key, values in parsed.items()}
 
     @app.post("/ui/journey")
@@ -519,7 +536,7 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
                     rows=rows,
                     author_id=values.get("author_id", ""),
                     edit_id=values.get("order_id", ""),
-                    error=str(error),
+                    error=str(error) if isinstance(error, DomainError) else "Datos de línea inválidos.",
                     order_status=values.get("order_status", "sale"),
                     **state,
                 ),

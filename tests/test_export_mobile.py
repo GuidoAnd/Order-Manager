@@ -26,15 +26,15 @@ async def check_downloads(tmp_path, viewport):
         page = await context.new_page()
         page.set_default_timeout(5000)
         try:
-            await page.goto("http://order-manager.test/confirmar/close")
+            await page.goto("http://127.0.0.1/confirmar/close")
             await assert_layout(page, viewport)
             await page.get_by_role("link", name="Cancelar", exact=True).click()
             assert app.state.store.get_journey()["id"] == journey_id
-            await page.goto("http://order-manager.test/confirmar/close")
+            await page.goto("http://127.0.0.1/confirmar/close")
             await page.get_by_role("button", name="Cerrar ventas y elegir descarga CSV / JSON / ZIP").click()
             await page.get_by_role("heading", name="Jornada cerrada", exact=True).wait_for()
             # El adaptador ASGI sigue el 303 internamente; visita su URL GET real.
-            await page.goto(f"http://order-manager.test/exportaciones?journey_id={journey_id}")
+            await page.goto(f"http://127.0.0.1/exportaciones?journey_id={journey_id}")
             assert app.state.store.get_journey() is None
             original = deepcopy(app.state.store.get_globals())
             assert await page.get_by_role("radio", name="Todo en ZIP").is_checked()
@@ -64,7 +64,7 @@ async def check_downloads(tmp_path, viewport):
             assert app.state.store.get_globals() == original
             await page.get_by_role("link", name="Volver al Dashboard", exact=True).click()
             await page.get_by_role("heading", name="Dashboard", exact=True).wait_for()
-            await page.goto("http://order-manager.test/registros")
+            await page.goto("http://127.0.0.1/registros")
             downloads = page.locator(".export-downloads")
             toggle = downloads.locator("summary")
             assert await downloads.get_attribute("open") is None
@@ -89,7 +89,7 @@ async def check_downloads(tmp_path, viewport):
             assert app.state.store.get_globals() == original
             app.state.store.create_journey("Otra")
             app.state.store.close_journey()
-            await page.goto(f"http://order-manager.test/exportaciones?journey_id={journey_id}")
+            await page.goto(f"http://127.0.0.1/exportaciones?journey_id={journey_id}")
             assert await page.get_by_role("alert").is_visible()
             assert await page.get_by_role("button", name="Descargar", exact=True).count() == 0
             await assert_layout(page, viewport)

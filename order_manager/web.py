@@ -15,6 +15,7 @@ from urllib.parse import urlencode
 from . import journey_results, table_pages
 from .article_search import ArticleSearch, article_identity, searchable
 from .store import DomainError, Store, is_sale, summary
+from .security import protect_forms
 
 
 STYLESHEET = Path(__file__).resolve().parent.parent / "static" / "styles.css"
@@ -73,6 +74,7 @@ def stylesheet_url() -> str:
 
 
 def layout(title: str, content: str, head: str = "") -> str:
+    content = protect_forms(content)
     sections = (
         ("/", "Dashboard"),
         ("/jornada", "Jornada"),

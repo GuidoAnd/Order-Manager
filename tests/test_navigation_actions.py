@@ -50,7 +50,7 @@ async def check_navigation_and_actions(tmp_path, viewport):
         page = await context.new_page()
         page.set_default_timeout(5000)
         try:
-            await page.goto("http://order-manager.test/")
+            await page.goto("http://127.0.0.1/")
             for section in ("Jornada", "Órdenes", "Artículos", "Registros", "Dashboard"):
                 menu = page.locator(".mobile-navigation")
                 if viewport[0] < 1024:

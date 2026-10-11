@@ -15,6 +15,10 @@ from order_manager.web import article_statistics_label, articles_page
 
 
 def request(app, method, url, values=None, *, form=False, raw=False):
+    if form:
+        _, _, page = request(app, "GET", "/jornada")
+        token = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+        values = {**(values or {}), "csrf_token": token}
     content_type = "application/x-www-form-urlencoded" if form else "application/json"
     body = urlencode(values) if form else json.dumps(values)
     body = body.encode() if values is not None else b""
@@ -37,7 +41,7 @@ def request(app, method, url, values=None, *, form=False, raw=False):
         "query_string": target.query.encode(),
         "headers": [(b"content-type", content_type.encode())],
         "scheme": "http",
-        "server": ("test", 80),
+        "server": ("127.0.0.1", 80),
         "client": ("test", 1),
         "root_path": "",
     }
