@@ -1,6 +1,6 @@
 # Resultados de pruebas por versión
 
-Actualizado: **2026-10-10T19:44:30Z** (UTC).
+Actualizado: **2026-10-14T05:05:10Z** (UTC).
 
 Los informes se agrupan según la versión evaluada. Cada archivo conserva su
 fecha UTC, alcance y resultado PASS/FAIL. Son registros históricos: sus cantidades
@@ -10,9 +10,11 @@ no se suman ni implican que una versión en desarrollo esté terminada.
 | --- | --- | --- |
 | v0.1 | [v0_1/](v0_1/) | Revisión final PASS: 22 pruebas funcionales e integrales de jornadas, autores, órdenes, artículos, estadísticas y cierre JSON. |
 | v0.2, revisión final | [v0_2/](v0_2/) | Suite completa: 285 PASS (215 unitarias/integrales y 70 de navegador), en 205,96 s. Incluye flujo principal, interfaz desde 320 px, exportación JSON/dos CSV/ZIP y regresiones de validación numérica, formularios antiguos y categorías. |
-| v0.3, bloques 1 a 5 | [v0_3/](v0_3/) | 328 PASS: persistencia, rollback y logging; navegador desde 320 px. Healthcheck: 65 pruebas pertinentes PASS; seguridad, frontend y Docker pendientes. |
+| v0.3, bloques 1 a 6 | [v0_3/](v0_3/) | Suite histórica de frontend: 437 PASS. Preparación Docker: 128 casos pertinentes PASS y configuración Compose verificada; construcción/ejecución a cargo del usuario. |
 
 ## v0.3
+
+- [Preparación Docker: 128 casos pertinentes PASS](v0_3/DOCKER_PREPARACION_20261014T050510Z.md).
 
 - [Healthcheck y regresiones pertinentes: 65 PASS](v0_3/HEALTHCHECK_20261010T201639Z.md).
 

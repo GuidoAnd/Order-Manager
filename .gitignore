@@ -5,3 +5,5 @@ __pycache__/
 *.pyc
 data/
 /docs/private/
+deployment.env
+order-manager-0.3.oci.tar

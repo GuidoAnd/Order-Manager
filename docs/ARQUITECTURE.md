@@ -347,3 +347,15 @@ La finalización de Jornada aparece antes de Autores y Artículos no presenta
 el acceso directo a órdenes. Se conservan seguridad y adaptación desde 320 px.
 
 Consultar [frontend](FRONTEND.md) y [ADR-006](decisions/ADR-006-jinja2-e-interfaces-de-ordenes.md).
+
+## Empaquetado Docker
+
+Builder/runtime con base Python 3.13.16/Alpine 3.23 fijada por digest. Variantes
+amd64 y arm64; usuario numérico sin privilegios, un worker, raíz de solo lectura
+y healthcheck HTTP local. El administrador configura origen y destino del montaje
+y UID/GID; DATA_DIR coincide con el destino. Contexto limitado a runtime,
+plantillas y estáticos. Consultar [Docker](DOCKER.md).
+
+- [Docker y arquitecturas](decisions/ADR-007-docker-y-arquitecturas.md).
+- [Logging y diagnóstico](decisions/ADR-008-logging-y-diagnostico.md).
+- [Persistencia, volúmenes y rollback](decisions/ADR-009-persistencia-volumenes-y-rollback.md).
