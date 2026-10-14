@@ -84,3 +84,60 @@ El diagnóstico se guarda en `DATA_DIR/logs/application.log` y consola, con INFO
 por defecto y `LOG_LEVEL=DEBUG` para troubleshooting. Rota a 5 MiB con 5 copias;
 el historial de acciones y cierres se conserva íntegro por separado. Consultar
 [configuración y comportamiento ante fallos](docs/LOGGING.md).
+
+## Despliegue con Docker
+
+Requiere Docker Engine y el plugin Docker Compose en el equipo de despliegue.
+Ejecutar desde la raíz del repositorio. El Dockerfile utiliza Python 3.13.16
+sobre Alpine 3.23 y admite equipos modernos `amd64` y `arm64`; Compose construye
+la imagen correspondiente a la arquitectura del equipo.
+
+Preparar la configuración del administrador:
+
+```bash
+cp deployment.env.example deployment.env
+```
+
+Editar `deployment.env`: `HOST_DATA_DIR` elige el directorio absoluto del host;
+`CONTAINER_DATA_DIR` indica dónde se monta dentro del contenedor y configura
+`DATA_DIR` automáticamente. `APP_UID` y `APP_GID` definen el usuario sin
+privilegios, `APP_PORT` el puerto local y `LOG_LEVEL` admite INFO o DEBUG.
+El archivo de configuración está excluido de Git.
+
+Crear el directorio de datos con permisos para el usuario elegido. Para los
+valores del ejemplo (`/srv/order-manager/data`, UID/GID `10001`):
+
+```bash
+sudo install -d -m 0750 -o 10001 -g 10001 /srv/order-manager/data
+```
+
+Si se modifican la ruta o los identificadores, ajustar ese comando a los valores
+configurados. El contenedor exige que el directorio exista y sea escribible;
+no cambia sus propietarios durante el arranque.
+
+Comprobar la configuración, construir la imagen y levantar el contenedor:
+
+```bash
+docker compose --env-file deployment.env -f compose.json config
+docker compose --env-file deployment.env -f compose.json build
+docker compose --env-file deployment.env -f compose.json up -d
+```
+
+Abrir **http://127.0.0.1:8000**; si se cambia `APP_PORT`, usar ese puerto.
+El acceso queda limitado al equipo local, con una instancia y un worker.
+La jornada, el inventario, las exportaciones y los logs permanecen en
+`HOST_DATA_DIR` al reemplazar el contenedor.
+
+Consultar el estado y los logs, o detener el despliegue:
+
+```bash
+docker compose --env-file deployment.env -f compose.json ps
+docker compose --env-file deployment.env -f compose.json logs --tail 100
+docker compose --env-file deployment.env -f compose.json down
+```
+
+El contenedor incluye healthcheck. Para troubleshooting, configurar
+`LOG_LEVEL=DEBUG` y volver a ejecutar `up -d` para aplicar el cambio.
+`down` conserva el directorio de datos del host; respaldarlo por separado.
+Consultar [Docker y datos persistentes](docs/DOCKER.md) para construcción
+multiarquitectura, permisos y copias de seguridad.
