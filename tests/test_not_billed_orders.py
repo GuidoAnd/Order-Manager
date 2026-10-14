@@ -142,7 +142,7 @@ def test_billed_to_unbilled_keeps_inventory_and_order(active):
     order = store.save_order(author["id"], [raw_line(unit_price=100)])
     store.save_order(author["id"], [raw_line()], order["id"], status="not_billed")
     assert any(item["name"] == "Regalo" for item in store.get_available_articles())
-    _, _, html = request(app, "GET", f"/ordenes?edit={order['id']}")
+    _, _, html = request(app, "GET", f"/ordenes/{order['id']}/editar")
     assert 'value="not_billed" checked' in html
     assert 'value="None"' not in html
     assert store.get_summary()["by_article"] == {}

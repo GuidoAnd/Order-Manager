@@ -1,0 +1,13 @@
+<li class="author-item">
+        <form method="post" action="/ui/journey">
+            <input type="hidden" name="author_id" value="{{ author_id }}">
+            <label>Nombre del autor
+                <input name="name" value="{{ name }}" required autocomplete="off">
+            </label>
+            <div class="actions">
+                <button name="action" value="rename_author">Guardar nombre</button>
+                <button class="danger" name="action" value="delete_author"
+                        formnovalidate>Eliminar</button>
+            </div>
+        </form>
+    </li>

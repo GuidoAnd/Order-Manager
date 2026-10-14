@@ -35,7 +35,9 @@ async def check_not_billed(tmp_path, viewport):
         page = await context.new_page()
         page.set_default_timeout(5000)
         try:
-            await page.goto("http://127.0.0.1/ordenes")
+            await page.goto("http://127.0.0.1/ordenes/nueva")
+            await page.get_by_label("Serie", exact=True).select_option("10")
+            await page.get_by_label("Numeración", exact=True).fill("001")
             editor = page.locator("#order-editor")
             not_billed = page.locator('input[name="order_status"][value="not_billed"]')
             await editor.locator('select[name="author_id"]').select_option(author["id"])
@@ -67,7 +69,7 @@ async def check_not_billed(tmp_path, viewport):
             assert await row.get_by_text("Sin importe", exact=True).is_visible()
             assert await row.get_by_text("Regalo nuevo", exact=False).is_visible()
             await row.locator(".order-actions-menu summary").click()
-            await row.get_by_role("button", name="Editar", exact=True).click()
+            await row.get_by_role("button", name="Editar orden", exact=True).click()
             assert await not_billed.is_checked()
             assert await editor.locator(".line-price:visible").count() == 0
             await page.get_by_label("Venta", exact=True).check()

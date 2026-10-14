@@ -40,7 +40,7 @@ async def check_shared_page(tmp_path, viewport):
                 author["name"] for author in authors
             }
             assert await view.get_by_role("heading", name="Sin órdenes", exact=True).count() == 0
-            assert await view.get_by_role("button", name="Editar", exact=True).count() == 0
+            assert await view.get_by_role("button", name="Editar orden", exact=True).count() == 0
             assert await view.get_by_role("button", name="Eliminar", exact=True).count() == 0
             await assert_layout(page, viewport)
             await view.get_by_role("link", name="Siguiente").click()
@@ -58,7 +58,7 @@ async def check_shared_page(tmp_path, viewport):
             action = rows.first.locator(".order-actions-menu")
             await action.locator("summary").focus()
             await page.keyboard.press("Enter")
-            edit = action.get_by_role("button", name="Editar", exact=True)
+            edit = action.get_by_role("button", name="Editar orden", exact=True)
             delete = action.get_by_role("button", name="Eliminar", exact=True)
             for control in (action.locator("summary"), edit, delete):
                 assert (await control.bounding_box())["height"] >= 44

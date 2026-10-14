@@ -1,5 +1,7 @@
 """Validación de documentos persistentes; no depende del estado en memoria."""
 
+from .order_series import validate_serial
+
 
 def require(condition: bool) -> None:
     if not condition:
@@ -68,6 +70,10 @@ def journey(data: dict | None) -> None:
     for order in data["orders"]:
         require(order["author_id"] in authors and natural(order["number"], 1))
         numbers.append(order["number"])
+        if "series" in order or "serial_number" in order:
+            require(isinstance(order.get("series"), str))
+            require(type(order.get("serial_number")) is int)
+            validate_serial(order["series"], order["serial_number"])
         require(order["status"] in {"sale", "not_billed"})
         require(isinstance(order["lines"], list) and 1 <= len(order["lines"]) <= 50)
         billed = order["status"] == "sale"

@@ -3,7 +3,10 @@
 from html import escape
 from urllib.parse import urlencode
 
+from .templating import component, render
+
 from .store import is_sale
+from .order_series import serial_label
 
 
 def h(value: object) -> str:
@@ -76,23 +79,21 @@ def _table_view(
         rows = f'<tr><td colspan="{len(headings)}">{h(empty)}</td></tr>'
     header = "".join(f"<th>{h(label)}</th>" for label in headings)
     labels = {"orders": "órdenes", "subtotals": "bloques", "articles": "artículos"}
-    return f"""<div class="journey-page-size journey-page-{size}">
-        <p role="status">{total} {labels[kind]} · Página {page} de {count}</p>
-        <div class="table-wrap responsive-table">
-            <table>
-                <thead><tr>{header}</tr></thead>
-                <tbody>{rows}</tbody>
-            </table>
-        </div>
-        {_navigation(author, kind, page, count, state)}
-    </div>"""
+    return render(
+        'journey_results/table_view.html',
+        size=size,
+        total=total,
+        labels_kind=labels[kind],
+        page=page,
+        count=count,
+        header=header,
+        rows=rows,
+        navigation_author_kind_page_count_state=_navigation(author, kind, page, count, state),
+    )
 
 
 def _cells(values: tuple, labels: tuple[str, ...]) -> str:
-    return "<tr>" + "".join(
-        f'<td data-label="{h(label)}">{value}</td>'
-        for label, value in zip(labels, values)
-    ) + "</tr>"
+    return component("cells", values, labels)
 
 
 def _block(
@@ -104,10 +105,14 @@ def _block(
         for size in (5, 4, 3, 2)
     )
     css_class = "author-article-results" if kind == "articles" else f"author-{kind}-results"
-    return f"""<div class="{css_class}" id="author-{kind}-{h(author['id'])}">
-        <h4>{h(title)}</h4>
-        {views}
-    </div>"""
+    return render(
+        'journey_results/block.html',
+        css_class=css_class,
+        kind=kind,
+        author_id=author['id'],
+        title=title,
+        views=views,
+    )
 
 
 def author_tables(
@@ -129,6 +134,8 @@ def author_tables(
             for line in order["lines"]
         )
         number = f'#{h(order["number"])}'
+        if order.get("series"):
+            number += f'<span class="order-series">{h(serial_label(order))}</span>'
         if not is_sale(order):
             number += '<span class="order-state">No facturada (regalo/cancelada)</span>'
         amount = h(order["total"]) if is_sale(order) else "Sin importe"
@@ -148,10 +155,10 @@ def author_tables(
     def subtotal_row(index):
         block = blocks[index]
         items = "".join(f'<li>#{h(order["number"])}</li>' for order in block)
-        detail = f"""<details class="subtotal-orders">
-            <summary class="button quiet">Ver órdenes</summary>
-            <ul class="list">{items}</ul>
-        </details>"""
+        detail = render(
+            'journey_results/subtotal_row.html',
+            items=items,
+        )
         return _cells(
             (h(index + 1), h(len(block)), h(sum(order["total"] for order in block)), detail),
             subtotal_headings,
@@ -181,35 +188,6 @@ def author_tables(
 
 
 def responsive_styles() -> str:
-    return """<style>
-        .author-summary .journey-page-size {
-            display: none;
-        }
-        .author-summary .journey-page-2 {
-            display: block;
-        }
-        @media (min-width: 375px) {
-            .author-summary .journey-page-2 {
-                display: none;
-            }
-            .author-summary .journey-page-3 {
-                display: block;
-            }
-        }
-        @media (min-width: 651px) {
-            .author-summary .journey-page-3 {
-                display: none;
-            }
-            .author-summary .journey-page-4 {
-                display: block;
-            }
-        }
-        @media (min-width: 1024px) {
-            .author-summary .journey-page-4 {
-                display: none;
-            }
-            .author-summary .journey-page-5 {
-                display: block;
-            }
-        }
-    </style>"""
+    return render(
+        'journey_results/responsive_styles.html',
+    )

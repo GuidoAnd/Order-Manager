@@ -13,6 +13,8 @@ from order_manager.web import articles_page, dashboard, journey_page, orders_pag
 
 
 def asgi_json(app, method, path, payload=None):
+    if payload is not None and method in ("POST", "PUT") and path.startswith("/api/orders"):
+        payload = {"series": "10", "serial_number": 1, **payload}
     body = json.dumps(payload).encode("utf-8") if payload is not None else b""
     messages = []
 
@@ -199,7 +201,7 @@ def test_order_article_remains_in_inventory_and_keeps_history(tmp_path):
     )
     assert not temporary.get("temporary", False)
     assert temporary["unit_price"] == 1800
-    assert "Limonada de la casa · 1800" in orders_page(store)
+    assert "Limonada de la casa · 1800" in orders_page(store, editor=True)
     assert "Temporal de esta jornada" not in articles_page(
         store, search=ArticleSearch(query=line["name"]),
     )
@@ -303,5 +305,5 @@ def test_author_views_keep_orders_and_totals_separate(tmp_path):
 
     grouped = orders_page(store)
     assert "Órdenes por autor" in grouped
-    assert 'optgroup label="Cafetería / Infusiones"' in grouped
-    assert "precio a completar" in grouped
+    assert 'optgroup label="Cafetería / Infusiones"' in orders_page(store, editor=True)
+    assert "precio a completar" in orders_page(store, editor=True)

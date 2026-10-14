@@ -1,0 +1,7 @@
+<label>Categoría
+        <select class="category-select" name="category_{{ index | safe }}">
+            <option value="">Seleccionar categoría</option>
+            {{ join_category_options | safe }}
+        </select>
+    </label>
+    {{ join_subcategory_fields | safe }}

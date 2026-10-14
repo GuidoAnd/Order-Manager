@@ -1,0 +1,14 @@
+<section class="panel">
+        <h2>Jornada</h2>
+        {{ active | safe }}
+    </section>
+    <section class="panel">
+        <h2>Resultados por autor</h2>
+        {{ authors | safe }}
+    </section>
+    <section class="panel">
+        <h2>Acumulado global</h2>
+        {{ metrics_globals__True | safe }}
+        <h3>Ventas por categoría</h3>
+        <ul>{{ categories | safe }}</ul>
+    </section>

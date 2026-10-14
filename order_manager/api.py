@@ -76,6 +76,8 @@ class LineInput(BaseModel):
 
 
 class OrderInput(BaseModel):
+    series: Literal["10", "20"]
+    serial_number: NonBooleanInt = Field(ge=1, le=160)
     author_id: str
     status: Literal["sale", "not_billed"] = "sale"
     lines: list[LineInput] = Field(min_length=1, max_length=50)
@@ -284,12 +286,14 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
     def create_order(data: OrderInput):
         return store.save_order(
             data.author_id, [line.model_dump() for line in data.lines], status=data.status,
+            series=data.series, serial_number=data.serial_number,
         )
 
     @app.put("/api/orders/{order_id}")
     def update_order(order_id: str, data: OrderInput):
         lines = [line.model_dump() for line in data.lines]
-        return store.save_order(data.author_id, lines, order_id, status=data.status)
+        return store.save_order(data.author_id, lines, order_id, status=data.status,
+                                series=data.series, serial_number=data.serial_number)
 
     @app.delete("/api/orders/{order_id}", status_code=204)
     def delete_order(order_id: str):
@@ -330,7 +334,18 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
     def orders_page(
         edit: str = "", article: str = "", page: int = Query(default=1, ge=1), q: str = "",
     ):
-        return web.orders_page(store, edit_id=edit, article_id=article, page=page, query=q)
+        if edit:
+            return RedirectResponse(web.order_editor_url(edit, page, article, q), status_code=303)
+        return web.orders_page(store, article_id=article, page=page, query=q)
+
+    @app.get("/ordenes/nueva", response_class=HTMLResponse)
+    def new_order(page: int = Query(default=1, ge=1), article: str = "", q: str = ""):
+        return web.orders_page(store, editor=True, page=page, article_id=article, query=q)
+
+    @app.get("/ordenes/{order_id}/editar", response_class=HTMLResponse)
+    def edit_order(order_id: str, page: int = Query(default=1, ge=1), article: str = "", q: str = ""):
+        return web.orders_page(store, editor=True, edit_id=order_id, page=page,
+                               article_id=article, query=q)
 
     @app.get("/articulos", response_class=HTMLResponse)
     def articles_page(
@@ -515,6 +530,7 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
                     order_form_lines(rows, inventory),
                     values.get("order_id") or None,
                     status=values.get("order_status", "sale"),
+                    series=values.get("series", ""), serial_number=values.get("serial_number", ""),
                 )
                 return RedirectResponse(web.orders_url(**state) + "#order-results", status_code=303)
             else:
@@ -525,6 +541,8 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
                 values.get("author_id", ""),
                 values.get("order_id", ""),
                 order_status=values.get("order_status", "sale"),
+                editor=True, series=values.get("series", ""),
+                serial_number=values.get("serial_number", ""),
                 **state,
             )
             return HTMLResponse(page)
@@ -538,6 +556,8 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
                     edit_id=values.get("order_id", ""),
                     error=str(error) if isinstance(error, DomainError) else "Datos de línea inválidos.",
                     order_status=values.get("order_status", "sale"),
+                    editor=True, series=values.get("series", ""),
+                    serial_number=values.get("serial_number", ""),
                     **state,
                 ),
                 status_code=status,

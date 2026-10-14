@@ -97,7 +97,7 @@ def test_api_order_taxonomy_is_persisted_and_remains_editable(
     })
     assert status == 201
     original = json.loads(body)
-    _, _, page = request(app, "GET", f"/ordenes?edit={original['id']}")
+    _, _, page = request(app, "GET", f"/ordenes/{original['id']}/editar")
     inventory = store.get_order_inventory(original["id"])
     position, group = next(
         (index, item) for index, item in enumerate(inventory["categories"])

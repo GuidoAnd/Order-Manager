@@ -1,0 +1,7 @@
+<label class="subcategory-choice subcategory-{{ position | safe }}">
+            Subcategoría
+            <select name="subcategory_{{ index | safe }}_{{ position_2 | safe }}">
+                <option value="">Seleccionar subcategoría</option>
+                {{ join_options | safe }}
+            </select>
+        </label>

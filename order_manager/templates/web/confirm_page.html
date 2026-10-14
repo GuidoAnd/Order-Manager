@@ -1,0 +1,12 @@
+<section class="panel">
+            <p>Jornada a recuperar: <strong>{{ info_title }}</strong>.</p>
+            <p role="alert">{{ warning }}</p>
+            <form method="post" action="/ui/journey">
+                <input type="hidden" name="action" value="recover">
+                <input type="hidden" name="confirm" value="yes">{{ fields | safe }}
+                <div class="actions">
+                    <button class="danger" type="submit">Confirmar recuperación</button>
+                    <a class="button quiet" href="/jornada">Cancelar</a>
+                </div>
+            </form>
+        </section>

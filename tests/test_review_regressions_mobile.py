@@ -36,7 +36,7 @@ async def check_review_fixes(tmp_path, viewport):
         page = await context.new_page()
         page.set_default_timeout(5000)
         try:
-            await page.goto(f"http://127.0.0.1/ordenes?edit={order['id']}")
+            await page.goto(f"http://127.0.0.1/ordenes/{order['id']}/editar")
             assert await page.locator('select[name="category_0"]').input_value() == "Categoría original"
             assert await page.locator(f'select[name="subcategory_0_{position}"]').input_value() == "Subcategoría original"
             assert await page.locator('select[name="category_1"]').input_value() == "Cafetería"
@@ -46,6 +46,8 @@ async def check_review_fixes(tmp_path, viewport):
             await page.get_by_role("button", name="Agregar artículo", exact=True).click()
             await page.get_by_role("button", name="Quitar artículo", exact=True).last.click()
             quantity = page.locator('input[name="quantity_0"]')
+            await page.get_by_label("Serie", exact=True).select_option("10")
+            await page.get_by_label("Numeración", exact=True).fill("001")
             await quantity.fill(str(MAX_INPUT_INTEGER + 1))
             await page.get_by_role("button", name="Guardar orden", exact=True).click()
             assert "Máximo permitido" in await page.get_by_role("alert").inner_text()

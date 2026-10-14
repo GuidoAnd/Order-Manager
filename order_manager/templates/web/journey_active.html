@@ -1,0 +1,58 @@
+<section class="panel">
+        <details class="journey-name-editor"{{ editor_open | safe }}>
+            <summary aria-label="Editar nombre">
+                <h2>{{ journey_title }}</h2>
+                <span class="button quiet">Editar nombre</span>
+            </summary>
+            <form method="post" action="/ui/journey">
+                <input type="hidden" name="journey_id" value="{{ journey_id }}">
+                <label>Nombre de la jornada
+                    <input name="title" value="{{ title_value }}" required maxlength="120">
+                </label>
+                <div class="actions">
+                    <button name="action" value="rename">Guardar</button>
+                    <a class="button quiet" href="/jornada">Cancelar</a>
+                </div>
+            </form>
+        </details>
+        <p>Abierta: {{ journey_opened_at }}</p>
+    </section>
+    <section class="panel">
+        <h2>Finalizar jornada</h2>
+        <div class="actions journey-final-actions">
+            <a class="button" href="/confirmar/close">Cerrar y contabilizar ventas</a>
+            <a class="button danger" href="/confirmar/discard">
+                Descartar jornada sin contabilizar ventas
+            </a>
+        </div>
+    </section>
+    <section class="panel">
+        <h2>Autores</h2>
+        <div class="authors-layout">
+            <details class="author-add author-disclosure"{{ add_open | safe }}>
+                <summary class="button add-article">Agregar autor</summary>
+                <form method="post" action="/ui/journey">
+                    <label>Nombre del autor
+                        <input name="name" value="{{ add_name }}" required autocomplete="off">
+                    </label>
+                    <div class="actions">
+                        <button name="action" value="add_author">Guardar autor</button>
+                        <a class="button quiet" href="/jornada">Cancelar</a>
+                    </div>
+                </form>
+            </details>
+            <div class="authors-registered">
+                <h3>Autores dados de alta</h3>
+                <ul class="list author-names">{{ author_names | safe }}</ul>
+                <details class="author-editor author-disclosure"{{ edit_open | safe }}>
+                    <summary class="button quiet">Editar autores</summary>
+                    <ul class="list">{{ authors | safe }}</ul>
+                    <a class="button quiet" href="/jornada">Cancelar</a>
+                </details>
+            </div>
+        </div>
+    </section>
+    <section class="panel">
+        <h2>Resultados por autor</h2>
+        {{ author_results | safe }}
+    </section>

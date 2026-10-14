@@ -11,6 +11,7 @@ from threading import RLock
 from uuid import uuid4
 
 from .article_search import article_identity
+from .order_series import validate_serial
 from .journey_export import build_export
 from .seed_inventory import initial_inventory
 from .persistence import RevisionStorage, StorageError
@@ -587,7 +588,8 @@ class Store:
     @mutating
     def save_order(
         self, author_id: str, lines: list[dict], order_id: str | None = None,
-        status: str = "sale",
+        status: str = "sale", *, series: str | None = None,
+        serial_number: object = None,
     ) -> dict:
         with self.lock:
             j = self._active()
@@ -597,6 +599,12 @@ class Store:
             existing_order = (
                 self._find(j["orders"], order_id, "Orden") if order_id else None
             )
+            serial = None
+            if series is not None or serial_number is not None:
+                try:
+                    serial = validate_serial(series, serial_number)
+                except ValueError as error:
+                    raise DomainError(str(error)) from None
             normalized = self._lines(lines, not_billed=status == "not_billed",
                                      previous=existing_order["lines"] if existing_order else None)
             for row in normalized:
@@ -636,6 +644,8 @@ class Store:
                 j["next_order"] += 1
                 j["orders"].append(order)
                 action = "order_created"
+            if serial is not None:
+                order.update(series=serial[0], serial_number=serial[1])
             if status == "not_billed":
                 articles = ", ".join(
                     f'{line["name"]} × {line["quantity"]}' for line in normalized
@@ -643,10 +653,12 @@ class Store:
                 self._event(
                     "order_not_billed",
                     f'Orden #{order["number"]} · ID {order["id"]} · '
-                    f'No facturada (regalo/cancelada), sin importe · {articles}',
+                    + (f'Serie {order["series"]} · {order["serial_number"]:03d} · ' if order.get("series") else "")
+                    + f'No facturada (regalo/cancelada), sin importe · {articles}',
                 )
             else:
-                self._event(action, f'Orden {order["number"]}')
+                self._event(action, f'Orden {order["number"]}' +
+                            (f' · Serie {order["series"]} · {order["serial_number"]:03d}' if serial else ""))
             return deepcopy(order)
 
     @mutating
@@ -655,7 +667,8 @@ class Store:
             j = self._active()
             order = self._find(j["orders"], order_id, "Orden")
             j["orders"].remove(order)
-            self._event("order_deleted", f'Orden {order["number"]}')
+            self._event("order_deleted", f'Orden {order["number"]}' +
+                        (f' · Serie {order["series"]} · {order["serial_number"]:03d}' if order.get("series") else ""))
 
     def get_summary(self) -> dict:
         with self.lock:

@@ -155,9 +155,9 @@ valida esa relación e ignora las selecciones de categorías inactivas. Los erro
 conservan nombre, precio, selección y búsqueda. Las acciones de Artículos se
 centran hasta 650 px, con colores distintos, separación y altura mínima de 44 px.
 
-Los artículos del catálogo ofrecen «Ver órdenes que lo usan». Esa vista identifica el producto
-por categoría, subcategoría y nombre, y permite acceder a las acciones de sus órdenes.
-Modificar o eliminar las órdenes recalcula las ventas y conserva los artículos del catálogo.
+El listado de Artículos ofrece edición y eliminación mediante Acciones. La vista
+de Órdenes conserva el filtro por identidad de artículo; los cambios de órdenes
+recalculan ventas y conservan los artículos del catálogo.
 Si un enlace ya no corresponde a un producto vigente, la vista informa esa situación.
 
 Hasta 650 px, las tablas de Artículos y el listado de Órdenes se presentan como fichas
@@ -286,8 +286,9 @@ jornada recuperada esté abierta, el selector informa que requiere otro cierre.
 
 El supervisor opera la plataforma sin autenticación. La autenticación y la persistencia de permisos se abordarán en una actualización menor posterior. MariaDB se evaluará después de v1.0.
 
-Jinja2 queda pendiente dentro de v0.3. Actualmente el HTML se construye desde Python y
-la presentación adaptable usa CSS y controles nativos de HTML.
+Jinja2 renderiza las pantallas y componentes desde plantillas del paquete.
+Python prepara contextos y aplica reglas de negocio; la presentación adaptable
+usa CSS y controles nativos de HTML.
 
 ## Límites de ejecución
 
@@ -311,6 +312,7 @@ Chromium emulado desde 320 px; no acredita dispositivos físicos ni otros motore
 - [Exportación CSV y selección de descargas](decisions/ADR-003-csv-export.md).
 - [Pruebas funcionales en móviles](decisions/ADR-004-mobile-testing.md).
 - [Seguridad local y evolución](decisions/ADR-005-seguridad-local-y-escalabilidad.md).
+- [Plantillas e interfaces de órdenes](decisions/ADR-006-jinja2-e-interfaces-de-ordenes.md).
 
 ## Seguridad local
 
@@ -328,3 +330,20 @@ persistencia, concurrencia y despliegue. Mantener una instancia y un worker.
 
 Consultar [seguridad local](SEGURIDAD.md) y el
 [ADR de seguridad y evolución](decisions/ADR-005-seguridad-local-y-escalabilidad.md).
+
+## Plantillas y nuevas interfaces de órdenes
+
+`templating.py` centraliza Jinja2, escape automático, StrictUndefined y caché
+de hasta 128 plantillas compiladas. Los datos de negocio se preparan por petición.
+El listado /ordenes y los editores /ordenes/nueva y /ordenes/{id}/editar están
+separados y comparten guardado; cancelación hacia Dashboard y contexto del
+listado conservado tras guardar.
+
+Serie y numeración son manuales y repetibles: 10/001–080 y 20/081–160.
+El ID y el contador interno se mantienen; los campos series/serial_number se
+guardan en revisiones, snapshot y JSON. Las órdenes históricas sin esos campos
+continúan legibles. La API de creación/actualización exige los campos manuales.
+La finalización de Jornada aparece antes de Autores y Artículos no presenta
+el acceso directo a órdenes. Se conservan seguridad y adaptación desde 320 px.
+
+Consultar [frontend](FRONTEND.md) y [ADR-006](decisions/ADR-006-jinja2-e-interfaces-de-ordenes.md).

@@ -1,0 +1,11 @@
+<form class="export-form" method="get" action="/api/exports/last">
+        <input type="hidden" name="journey_id" value="{{ journey_id }}">{{ close_field | safe }}
+        <fieldset>
+            <legend>Elegir archivo para descargar</legend>
+            <div class="export-options">{{ radios | safe }}</div>
+        </fieldset>
+        <div class="actions">
+            <button type="submit">Descargar</button>
+            <a class="button quiet" href="/">Volver al Dashboard</a>
+        </div>
+    </form>

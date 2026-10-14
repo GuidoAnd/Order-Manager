@@ -2,6 +2,8 @@
 
 from html import escape
 
+from .templating import render
+
 
 def h(value: object) -> str:
     return escape(str(value), quote=True)
@@ -28,49 +30,22 @@ def table_pages(
             if 1 <= target <= count:
                 url = page_url(target) + "#" + anchor
                 links.append(f'<a class="button{color}" href="{h(url)}">{text}</a>')
-        views.append(f"""<div class="table-page-view table-page-{size}">
-            <p role="status">{total} {h(label)} · Página {current} de {count}</p>
-            <div class="table-wrap responsive-table">
-                <table>
-                    <thead><tr>{header}</tr></thead>
-                    <tbody>{rows}</tbody>
-                </table>
-            </div>
-            <nav class="pagination" aria-label="{h(navigation)}">{''.join(links)}</nav>
-        </div>""")
+        views.append(render(
+            'table_pages/table_pages.html',
+            size=size,
+            total=total,
+            label=label,
+            current=current,
+            count=count,
+            header=header,
+            rows=rows,
+            navigation=navigation,
+            join_links=''.join(links),
+        ))
     return f'<div id="{h(anchor)}">' + "\n".join(views) + "</div>"
 
 
 def responsive_styles() -> str:
-    return """<style>
-        .table-page-view {
-            display: none;
-        }
-        .table-page-2 {
-            display: block;
-        }
-        @media (min-width: 375px) {
-            .table-page-2 {
-                display: none;
-            }
-            .table-page-3 {
-                display: block;
-            }
-        }
-        @media (min-width: 651px) {
-            .table-page-3 {
-                display: none;
-            }
-            .table-page-4 {
-                display: block;
-            }
-        }
-        @media (min-width: 1024px) {
-            .table-page-4 {
-                display: none;
-            }
-            .table-page-5 {
-                display: block;
-            }
-        }
-    </style>"""
+    return render(
+        'table_pages/responsive_styles.html',
+    )

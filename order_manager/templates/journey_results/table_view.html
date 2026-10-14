@@ -1,0 +1,10 @@
+<div class="journey-page-size journey-page-{{ size | safe }}">
+        <p role="status">{{ total | safe }} {{ labels_kind | safe }} · Página {{ page | safe }} de {{ count | safe }}</p>
+        <div class="table-wrap responsive-table">
+            <table>
+                <thead><tr>{{ header | safe }}</tr></thead>
+                <tbody>{{ rows | safe }}</tbody>
+            </table>
+        </div>
+        {{ navigation_author_kind_page_count_state | safe }}
+    </div>

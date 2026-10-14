@@ -1,0 +1,31 @@
+<section class="panel">
+        <h2>Catálogo vendido de la jornada</h2>
+        <p>Unidades facturadas en las órdenes actuales, de mayor a menor.</p>
+        {{ sold_table | safe }}
+    </section>
+    <section class="panel" id="article-results">
+        <h2>Artículos disponibles para órdenes</h2>
+        <p>Los artículos guardados y los temporales de órdenes vigentes sirven
+           como referencia para nuevas órdenes.</p>
+        {{ article_browser_store_search | safe }}
+    </section>
+    <section class="panel" id="article-editor">
+        <h2>{{ form_title | safe }}</h2>
+        <form method="post" action="/ui/articles" novalidate>
+            {{ search_fields_search_post_True | safe }}
+            <input type="hidden" name="article_id" value="{{ edit_id }}">
+            <div class="grid taxonomy-fields">
+                <label>Nombre
+                    <input name="name" value="{{ current_get_name }}" required>
+                </label>
+                {{ taxonomy_fields_article_current_store_get_inventory | safe }}
+                <label>Precio unitario (opcional)
+                    <input name="unit_price" type="number" min="0" step="1"
+                           value="{{ current_get_unit_price_if_current_get_unit_price_is_not_None }}">
+                </label>
+            </div>
+            <div class="actions">
+                <button type="submit">Guardar artículo</button>
+            </div>
+        </form>
+    </section>

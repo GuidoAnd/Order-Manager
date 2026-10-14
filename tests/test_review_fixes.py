@@ -15,6 +15,10 @@ from order_manager.web import article_statistics_label, articles_page
 
 
 def request(app, method, url, values=None, *, form=False, raw=False):
+    if values is not None and method in ("POST", "PUT") and url.startswith("/api/orders"):
+        values = {"series": "10", "serial_number": 1, **values}
+    if form and url == "/ui/orders/form":
+        values = {"series": "10", "serial_number": "001", **(values or {})}
     if form:
         _, _, page = request(app, "GET", "/jornada")
         token = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)

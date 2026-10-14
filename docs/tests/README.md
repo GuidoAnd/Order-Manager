@@ -10,7 +10,7 @@ no se suman ni implican que una versión en desarrollo esté terminada.
 | --- | --- | --- |
 | v0.1 | [v0_1/](v0_1/) | Revisión final PASS: 22 pruebas funcionales e integrales de jornadas, autores, órdenes, artículos, estadísticas y cierre JSON. |
 | v0.2, revisión final | [v0_2/](v0_2/) | Suite completa: 285 PASS (215 unitarias/integrales y 70 de navegador), en 205,96 s. Incluye flujo principal, interfaz desde 320 px, exportación JSON/dos CSV/ZIP y regresiones de validación numérica, formularios antiguos y categorías. |
-| v0.3, bloques 1 a 4 | [v0_3/](v0_3/) | 328 PASS: persistencia, rollback y logging; navegador desde 320 px. Healthcheck: 65 pruebas pertinentes PASS; seguridad, frontend y Docker pendientes. |
+| v0.3, bloques 1 a 5 | [v0_3/](v0_3/) | 328 PASS: persistencia, rollback y logging; navegador desde 320 px. Healthcheck: 65 pruebas pertinentes PASS; seguridad, frontend y Docker pendientes. |
 
 ## v0.3
 
@@ -83,3 +83,8 @@ Los resultados de las auditorías están en [docs/audits](../audits/).
 
 Suite completa: **411 PASS**, sin fallos; 56 casos de seguridad incluidos.
 [Informe UTC](v0_3/SEGURIDAD_20261011T233150Z.md).
+
+## Frontend y Jinja2 de v0.3
+
+Suite completa: **437 PASS**, sin fallos; 26 casos nuevos incluidos.
+[Informe UTC](v0_3/FRONTEND_JINJA2_20261014T035721Z.md).

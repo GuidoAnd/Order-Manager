@@ -1,0 +1,23 @@
+<tr>
+        <td data-label="Nombre">{{ article_name }}</td>
+        <td data-label="Categoría">{{ article_category }}</td>
+        <td data-label="Subcategoría">{{ article_subcategory }}</td>
+        <td data-label="Precio">{{ price_label }}</td>
+        <td data-label="Acciones">
+            <details class="article-actions">
+                <summary class="button quiet" aria-label="Acciones de {{ article_name_2 }}">Acciones</summary>
+                <div class="row-actions">
+                    <form method="get" action="/articulos#article-editor">
+                        {{ search_fields_search_page_page | safe }}
+                        <input type="hidden" name="edit" value="{{ article_id }}">
+                        <button type="submit">Editar</button>
+                    </form>
+                    <form method="post" action="/ui/articles">
+                        {{ search_fields_search_post_True_page_page | safe }}
+                        <input type="hidden" name="article_id" value="{{ article_id_2 }}">
+                        <button class="danger" name="action" value="delete">Eliminar</button>
+                    </form>
+                </div>
+            </details>
+        </td>
+    </tr>
