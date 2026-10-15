@@ -76,6 +76,9 @@ def journey(data: dict | None) -> None:
             validate_serial(order["series"], order["serial_number"])
         require(order["status"] in {"sale", "not_billed"})
         require(isinstance(order["lines"], list) and 1 <= len(order["lines"]) <= 50)
+        line_ids = [line["line_id"] for line in order["lines"] if "line_id" in line]
+        require(all(text(identifier) and len(identifier) <= 36 for identifier in line_ids))
+        require(len(line_ids) == len(set(line_ids)))
         billed = order["status"] == "sale"
         for line in order["lines"]:
             article(line)

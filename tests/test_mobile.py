@@ -207,7 +207,8 @@ async def run_mobile_workflow(tmp_path, viewport):
                 'form[action="/ui/orders/form"] input[name="order_id"]'
             )
             order_id = await order_id_field.input_value()
-            await page.locator('input[name="new_unit_price_1"]').fill("")
+            assert await page.locator('input[name="source_1"][value="inventory"]').is_checked()
+            await page.locator('input[name="unit_price_1"]').fill("-1")
             await page.get_by_role("button", name="Guardar orden").click()
             assert await page.get_by_role("alert").is_visible()
             assert await page.get_by_role("heading", name="Editar orden").is_visible()
@@ -215,7 +216,7 @@ async def run_mobile_workflow(tmp_path, viewport):
             assert await order_id_field.input_value() == order_id
             assert await page.locator('input[name="quantity_0"]').input_value() == "3"
             await assert_layout(page, viewport)
-            await page.locator('input[name="new_unit_price_1"]').fill("2500")
+            await page.locator('input[name="unit_price_1"]').fill("2500")
             await page.get_by_role("button", name="Guardar orden").click()
             assert await page.locator("#order-results .order-actions-menu:visible").count() == 1
             assert await page.get_by_role("cell", name="13400").is_visible()

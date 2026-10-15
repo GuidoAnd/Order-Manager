@@ -3,7 +3,7 @@
 import asyncio
 
 import pytest
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, expect
 
 from order_manager.api import make_app
 from test_journey_subtotals import add_order
@@ -55,9 +55,11 @@ async def check_shared_page(tmp_path, viewport):
             await view.get_by_role("link", name="Siguiente").click()
             assert await rows.count() == 3
             await view.get_by_role("link", name="Anterior").click()
+            await expect(view.get_by_role("status")).to_have_text("8 órdenes · Página 1 de 2")
+            await page.wait_for_load_state("load")
             action = rows.first.locator(".order-actions-menu")
-            await action.locator("summary").focus()
-            await page.keyboard.press("Enter")
+            await action.locator("summary").press("Enter")
+            await expect(action).to_have_attribute("open", "")
             edit = action.get_by_role("button", name="Editar orden", exact=True)
             delete = action.get_by_role("button", name="Eliminar", exact=True)
             for control in (action.locator("summary"), edit, delete):

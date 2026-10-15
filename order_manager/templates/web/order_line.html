@@ -1,4 +1,5 @@
 <fieldset class="order-line">
+        <input type="hidden" name="line_id_{{ index }}" value="{{ line_id }}">
         <legend>Artículo {{ index_1 | safe }}</legend>
         <label>Cantidad
             <input name="quantity_{{ index | safe }}" type="number" min="1" step="1"

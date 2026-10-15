@@ -46,6 +46,22 @@ def normalize_pages(
     return state
 
 
+class NavigationPages(dict):
+    def __init__(self, pages: dict, navigation, journey_id: str):
+        super().__init__(pages)
+        self.navigation = navigation
+        self.journey_id = journey_id
+        self.token = None
+
+
+def _page_query(state: dict) -> dict:
+    return {
+        f"{group}_{key}": value
+        for group, pages in state.items() for key, value in pages.items()
+        if value > 1
+    }
+
+
 def _navigation(author: dict, kind: str, page: int, count: int, state: dict) -> str:
     links = []
     anchor = f"author-{kind}-{author['id']}"
@@ -53,12 +69,18 @@ def _navigation(author: dict, kind: str, page: int, count: int, state: dict) -> 
         (page - 1, "Anterior", ""), (page + 1, "Siguiente", " quiet"),
     ):
         if 1 <= target <= count:
-            query = {
-                f"{group}_{key}": value
-                for group, pages in state.items() for key, value in pages.items()
-            }
-            query[f"{kind}_{author['id']}"] = target
-            url = "/jornada?" + urlencode(query) + "#" + anchor
+            query = _page_query(state)
+            current = f"{kind}_{author['id']}"
+            if target > 1:
+                query[current] = target
+            else:
+                query.pop(current, None)
+            encoded = urlencode(query)
+            if isinstance(state, NavigationPages) and len(encoded) > 4096:
+                if state.token is None:
+                    state.token = state.navigation.save(state.journey_id, _page_query(state))
+                encoded = urlencode({"pages": state.token, current: target})
+            url = "/jornada?" + encoded + "#" + anchor
             links.append(f'<a class="button{color}" href="{h(url)}">{label}</a>')
     labels = {"orders": "Órdenes", "subtotals": "Subtotales", "articles": "Artículos"}
     return (

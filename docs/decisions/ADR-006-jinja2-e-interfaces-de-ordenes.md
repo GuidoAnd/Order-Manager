@@ -97,6 +97,22 @@ compatibles con Python 3.13. Mantener las demás versiones del proyecto.
   repetido; no se establece una mejora porcentual ni una garantía de latencia.
   La validación funcional no sustituye mediciones de rendimiento bajo carga.
 
+## Actualización — 2026-10-14
+
+Asignar un identificador automático `line_id` a las líneas nuevas y admitirlo
+como campo opcional en edición. Validar pertenencia a la orden y ausencia de
+duplicados. Conservarlo en formularios, revisiones, rollback y JSON. Las órdenes
+previas siguen legibles sin reescritura del historial; el editor calcula sus
+referencias estables y las confirma al guardar. Los clientes anteriores siguen
+admitidos, con correspondencia posicional para referencias repetidas sin ID.
+
+Conservar estados extensos de paginación mediante tokens aleatorios por instancia,
+asociados al ID de jornada, con 30 minutos de vigencia, máximo 64 entradas y
+32768 selecciones totales. Mantener los enlaces normales para consultas cortas.
+No persistir ni incluir datos de negocio en este estado. Informar al operador
+cuando un enlace ya no esté disponible y restablecer las páginas. Esta decisión
+mantiene el límite HTTP, una instancia y un worker, sin nuevas dependencias.
+
 ## Revisar cuando
 
 - Cambien las series, los rangos o el contrato de exportación.

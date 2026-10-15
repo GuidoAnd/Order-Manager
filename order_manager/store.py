@@ -1,6 +1,7 @@
 """Lógica de jornadas y catálogo con confirmación persistente por operación."""
 from __future__ import annotations
 
+from collections import Counter
 from copy import deepcopy
 from datetime import datetime, timezone
 from functools import wraps
@@ -11,6 +12,7 @@ from threading import RLock
 from uuid import uuid4
 
 from .article_search import article_identity
+from .order_lines import line_identifier
 from .order_series import validate_serial
 from .journey_export import build_export
 from .seed_inventory import initial_inventory
@@ -543,15 +545,38 @@ class Store:
             raise DomainError("La orden admite hasta 50 líneas.")
         output = []
         available = None
+        saved_by_id = {line["line_id"]: line for line in previous or []}
+        requested_ids = [row["line_id"] for row in lines if row.get("line_id")]
+        if len(requested_ids) != len(set(requested_ids)):
+            raise DomainError("Identificador de línea repetido.")
+        if any(identifier not in saved_by_id for identifier in requested_ids):
+            raise DomainError("La línea no pertenece a esta orden.", 409)
+        used_ids = set()
+        catalog_counts = Counter(row.get("catalog_id") for row in lines)
+        # Una referencia única permite reconocer una línea desplazada sin ambigüedad.
+        unique_saved = {}
+        for line in previous or []:
+            catalog_id = line.get("catalog_id")
+            if catalog_id:
+                unique_saved[catalog_id] = None if catalog_id in unique_saved else line
         for index, row in enumerate(lines):
             quantity = bounded_integer(
                 row.get("quantity"), 1, "La cantidad debe ser un entero positivo.",
             )
+            identified = saved_by_id.get(row.get("line_id"))
             if row.get("catalog_id"):
                 if available is None:
                     available = {item["id"]: item for item in self.get_available_articles()}
                 old = previous[index] if previous and index < len(previous) else None
                 saved_line = old if old and old.get("catalog_id") == row["catalog_id"] else None
+                if identified is not None:
+                    saved_line = identified if identified.get("catalog_id") == row["catalog_id"] else None
+                if not row.get("line_id") and saved_line is None and catalog_counts[row["catalog_id"]] == 1:
+                    saved_line = unique_saved.get(row["catalog_id"])
+                if saved_line and not row.get("line_id") and (
+                    saved_line["line_id"] in requested_ids or saved_line["line_id"] in used_ids
+                ):
+                    saved_line = None
                 article = available.get(row["catalog_id"]) or saved_line
                 if article is None:
                     raise DomainError("Artículo no encontrado.", 404)
@@ -560,7 +585,7 @@ class Store:
                     for key in ("name", "category", "subcategory", "unit_price")
                 }
                 if saved_line:
-                    data = {key: old[key] for key in ("name", "category", "subcategory", "unit_price")}
+                    data = {key: saved_line[key] for key in ("name", "category", "subcategory", "unit_price")}
                     if row.get("unit_price") not in (None, ""):
                         data["unit_price"] = row["unit_price"]
                 if not_billed:
@@ -577,7 +602,16 @@ class Store:
                     {**row, "unit_price": None} if not_billed else row,
                     allow_empty_price=not_billed,
                 )
+            positional = previous[index] if previous and index < len(previous) else None
+            matched = identified or (saved_line if row.get("catalog_id") else (
+                positional if positional and not positional.get("catalog_id") else None
+            ))
+            identifier = matched["line_id"] if matched else str(uuid4())
+            if identifier in used_ids or (not row.get("line_id") and identifier in requested_ids):
+                identifier = str(uuid4())
+            used_ids.add(identifier)
             output.append({
+                "line_id": identifier,
                 **data,
                 **({"catalog_id": row["catalog_id"]} if row.get("catalog_id") else {}),
                 "quantity": quantity,
@@ -605,13 +639,20 @@ class Store:
                     serial = validate_serial(series, serial_number)
                 except ValueError as error:
                     raise DomainError(str(error)) from None
-            normalized = self._lines(lines, not_billed=status == "not_billed",
-                                     previous=existing_order["lines"] if existing_order else None)
+            previous = None
+            if existing_order:
+                previous = [
+                    {**line, "line_id": line_identifier(existing_order["id"], index, line)}
+                    for index, line in enumerate(existing_order["lines"])
+                ]
+            normalized = self._lines(lines, not_billed=status == "not_billed", previous=previous)
+            historical_keys = {
+                article_identity(old) for old in existing_order["lines"]
+            } if existing_order else set()
+            catalog_keys = {article_identity(article) for article in self.inventory["articles"]}
             for row in normalized:
-                historical_line = existing_order and any(
-                    article_identity(old) == article_identity(row) for old in existing_order["lines"]
-                )
-                if historical_line or any(article_identity(a) == article_identity(row) for a in self.inventory["articles"]):
+                key = article_identity(row)
+                if key in historical_keys or key in catalog_keys:
                     continue
                 article = {key: row[key] for key in ("name", "category", "subcategory", "unit_price")}
                 article["id"] = str(uuid4())
@@ -619,7 +660,8 @@ class Store:
                 self.inventory["articles"].append(article)
                 j["articles"].append(deepcopy(article))
                 self._new_catalog_articles[article["id"]] = {**deepcopy(article), "temporary": False, "deleted": False}
-                self._journey_catalog_keys.add(article_identity(article))
+                catalog_keys.add(key)
+                self._journey_catalog_keys.add(key)
             total = None if status == "not_billed" else sum(row["subtotal"] for row in normalized)
             if existing_order:
                 order = existing_order

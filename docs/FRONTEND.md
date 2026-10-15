@@ -52,12 +52,29 @@ Los nuevos campos sobreviven a reinicios y rollback, y forman parte del JSON
 de cierre. El esquema v0.2 incorpora esos campos en las órdenes asignadas;
 los CSV agregados mantienen su formato y los archivos ZIP incluyen el JSON.
 
+Las líneas nuevas reciben `line_id` generado por el servidor. En PUT, devolver
+ese identificador permite reconocer cada línea aunque se reordenen artículos
+repetidos o se quite otra línea. El servidor rechaza identificadores duplicados
+o ajenos a esa orden. Para una línea nueva se omite `line_id`; el servidor lo
+asigna al guardar. Las solicitudes antiguas siguen admitidas, pero la edición
+sin identificadores de artículos repetidos conserva la correspondencia por
+posición. Los formularios transportan los identificadores en campos ocultos.
+Las órdenes antiguas sin el campo siguen legibles; el editor calcula referencias
+estables y solo las confirma al guardar. Persistencia, rollback y JSON de cierre
+conservan los identificadores; los CSV agregados mantienen su formato.
+
 ## Jornada y Artículos
 
 La finalización aparece debajo del bloque principal de Jornada, antes de Autores
 y Resultados. Sus confirmaciones se conservan. Artículos mantiene las acciones
 de edición y eliminación y sus filtros; el acceso Ver órdenes que lo usan no
 se presenta en esa sección.
+
+Cuando el estado de paginación es extenso, Jornada usa enlaces cortos con un
+token de navegación por instancia. Las selecciones de otras tablas se conservan.
+Caduca a los 30 minutos y puede descartarse al alcanzar el límite de memoria o
+reiniciar; en esos casos aparece un aviso y las tablas vuelven a la primera
+página. Este estado no guarda órdenes ni sustituye la persistencia en DATA_DIR.
 
 ## Seguridad y mantenimiento
 

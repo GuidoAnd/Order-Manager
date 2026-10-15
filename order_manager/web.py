@@ -13,6 +13,7 @@ import re
 from urllib.parse import urlencode
 
 from .templating import component, render
+from .order_lines import line_identifier
 from .order_series import serial_label
 
 from . import journey_results, table_pages
@@ -175,6 +176,7 @@ def journey_page(
     article_pages: dict[str, int] | None = None,
     order_pages: dict[str, int] | None = None,
     subtotal_pages: dict[str, int] | None = None,
+    navigation=None,
 ) -> str:
     journey = store.get_journey()
     if not journey:
@@ -200,6 +202,8 @@ def journey_page(
         {"articles": article_pages or {}, "orders": order_pages or {},
          "subtotals": subtotal_pages or {}},
     )
+    if navigation is not None:
+        pages = journey_results.NavigationPages(pages, navigation, journey["id"])
     author_results = "\n".join(
         _author_results(
             author,
@@ -332,14 +336,22 @@ def _order_line(index: int, row: dict, catalog: list[dict], inventory: dict) -> 
     def value(key: str) -> str:
         return h(row.get(key) if row.get(key) is not None else "")
 
-    catalog_options = _catalog_options(catalog, row.get("catalog_id", ""))
+    selected_id = row.get("catalog_id", "")
+    if selected_id and row.get("line_id") and row.get("name") and not any(
+        article["id"] == selected_id for article in catalog
+    ):
+        catalog = [*catalog, {**row, "id": selected_id}]
+    catalog_options = _catalog_options(catalog, selected_id)
     quantity = value("quantity") or "1"
-    source = row.get("source", "new" if row.get("name") else "inventory")
+    source = row.get("source", "inventory" if selected_id else (
+        "new" if row.get("name") else "inventory"
+    ))
     inventory_checked = " checked" if source == "inventory" else ""
     new_checked = " checked" if source == "new" else ""
     inventory_price = value("unit_price") if source == "inventory" or "source" in row else ""
     return render(
         'web/order_line.html',
+        line_id=row.get("line_id") or "",
         index_1=index + 1,
         index=index,
         quantity=quantity,
@@ -514,7 +526,8 @@ def orders_page(
     sale_checked = " checked" if order_status == "sale" else ""
     not_billed_checked = " checked" if order_status == "not_billed" else ""
     if selected_order and rows is None:
-        rows = selected_order["lines"]
+        rows = [{**line, "line_id": line_identifier(selected_order["id"], index, line)}
+                for index, line in enumerate(selected_order["lines"])]
         author_id = selected_order["author_id"]
     if rows is None:
         rows = [{}]
@@ -666,8 +679,7 @@ def _article_results(matches: list[dict], search: ArticleSearch, page_size: int)
     )
 
 
-def _article_browser(store: Store, search: ArticleSearch) -> str:
-    inventory = store.get_inventory()
+def _article_browser(inventory: dict, search: ArticleSearch) -> str:
     categories = "\n".join(
         f'<option value="{h(category["name"])}'
         f'"{" selected" if category["name"] == search.category else ""}>'
@@ -685,8 +697,7 @@ def _article_browser(store: Store, search: ArticleSearch) -> str:
             for item in inventory["subcategories"] if item["category_id"] == category["id"]
         )
         subcategories.append(f'<optgroup label="{h(category["name"])}">{options}</optgroup>')
-    available = store.get_available_articles()
-    matches = search.matching(available)
+    matches = search.matching(inventory["articles"])
     results = "\n".join(_article_results(matches, search, size) for size in (5, 4, 3, 2))
     return render(
         'web/article_browser.html',
@@ -722,10 +733,13 @@ def articles_page(
         return layout("Artículos", alert(error) + message)
 
     search = search or ArticleSearch()
+    inventory = store.get_inventory()
     current = next(
-        (article for article in journey["articles"] if article["id"] == edit_id),
+        (article for article in inventory["articles"] if article["id"] == edit_id),
         {},
     )
+    if edit_id and not current:
+        raise DomainError("Artículo no encontrado.", 404)
     form_title = "Editar artículo" if current else "Agregar artículo"
     if values is not None:
         current = values
@@ -743,16 +757,16 @@ def articles_page(
     body = render(
         'web/articles_page.html',
         sold_table=sold_table,
-        article_browser_store_search=_article_browser(store, search),
+        article_browser_store_search=_article_browser(inventory, search),
         form_title=form_title,
         search_fields_search_post_True=_search_fields(search, post=True),
         edit_id=edit_id,
         current_get_name=current.get('name', ''),
-        taxonomy_fields_article_current_store_get_inventory=_taxonomy_fields('article', current, store.get_inventory()),
+        taxonomy_fields_article_current_store_get_inventory=_taxonomy_fields('article', current, inventory),
         current_get_unit_price_if_current_get_unit_price_is_not_None=current.get('unit_price') if current.get('unit_price') is not None else '',
     )
     styles = (
-        _subcategory_styles(store.get_inventory()) + _article_page_styles()
+        _subcategory_styles(inventory) + _article_page_styles()
         + table_pages.responsive_styles()
     )
     return layout("Artículos", alert(error) + body, styles)
@@ -768,8 +782,9 @@ def _event_row(event: dict) -> str:
 
 
 def events_page(store: Store, page: int = 1) -> str:
+    events = store.get_events()
     table = table_pages.table_pages(
-        list(reversed(store.get_events())), page, ("Fecha", "Acción", "Detalle"),
+        list(reversed(events)), page, ("Fecha", "Acción", "Detalle"),
         _event_row, lambda target: "/registros?" + urlencode({"page": target}),
         "movimientos", "Páginas de registros", "Sin movimientos.", "journey-events",
     )
@@ -782,7 +797,7 @@ def events_page(store: Store, page: int = 1) -> str:
     except DomainError:
         download = "<p>Los archivos de la jornada recuperada estarán disponibles cuando vuelva a cerrarse.</p>" if store.journey and any(
             e["action"] == "journey_recovered" and e["journey_id"] == store.journey["id"]
-            for e in store.get_events()
+            for e in events
         ) else ""
 
     body = render(

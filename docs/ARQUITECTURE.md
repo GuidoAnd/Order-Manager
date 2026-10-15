@@ -49,6 +49,9 @@ al eliminar sus órdenes o descartar la jornada.
 Las altas y ediciones del catálogo reutilizan la escritura de categorías y
 subcategorías existentes cuando los nombres solo difieren en mayúsculas.
 Esto mantiene coherentes los artículos, los filtros y los desplegables.
+La pantalla de Artículos comparte una copia del inventario vigente entre listado,
+filtros y editor. Después de recuperar una jornada, el editor conserva los nombres,
+precios y altas posteriores del catálogo. Un artículo inexistente responde `404`.
 
 ## Formulario de órdenes
 
@@ -82,6 +85,17 @@ si alguna línea lo usa. La consulta se reutiliza por identificador durante esa
 operación, bajo el bloqueo de la jornada; se reconstruye en el siguiente guardado
 para respetar cambios de catálogo en operaciones posteriores. Al editar una línea
 guardada se conserva su precio salvo modificación explícita.
+Si una referencia de catálogo aparece una sola vez en la orden guardada y en la
+solicitud de edición, se reconoce también al cambiar de posición. Se conservan
+sus datos históricos aunque el artículo se haya eliminado del catálogo.
+Cada línea nueva recibe un `line_id` automático. La edición puede devolverlo
+para conservar su identidad, incluso con referencias repetidas que cambian de
+posición. Se rechazan identificadores ajenos a la orden o duplicados. Las
+solicitudes antiguas sin identificadores conservan la correspondencia por posición
+para referencias repetidas; deben devolver `line_id` para reordenarlas sin
+ambigüedad. Una línea nueva adicional utiliza el precio vigente. Las identidades
+del catálogo y de las líneas históricas se calculan una vez por guardado para
+detectar altas sin búsquedas completas por cada línea, bajo el mismo bloqueo y sin caché entre operaciones.
 
 En móvil, las acciones finales se apilan y separan. «Guardar orden» ocupa el ancho
 disponible y tiene mayor tamaño que «Agregar artículo» (verde) y «Quitar artículo»
@@ -173,6 +187,17 @@ páginas de las demás al navegar. Muestra 2 filas hasta 374 px, 3 hasta 650 px,
 4 hasta 1023 px y 5 desde 1024 px. Hasta 650 px se presenta como fichas con las
 mismas etiquetas; en anchos mayores mantiene la tabla. No requiere desplazamiento
 lateral en móvil. Los nombres largos se parten dentro del espacio disponible.
+Los enlaces conservan únicamente las páginas distintas de la primera; volver a
+la primera elimina ese parámetro. Así, los autores sin navegación no añaden
+parámetros que puedan agotar el límite de longitud de URL.
+Si la consulta supera 4096 caracteres, se usa un token y la selección de destino.
+`journey_navigation.py` conserva únicamente páginas por instancia: hasta 64
+estados y 32768 selecciones en total, con caducidad de 30 minutos. El estado se
+comparte entre los enlaces de una respuesta, está asociado al ID de jornada y
+no modifica DATA_DIR. Un token caducado, expulsado, de otra jornada o perdido al
+reiniciar muestra un aviso y restablece las páginas. Un estado que por sí solo
+excede el límite se rechaza con 413 y un mensaje para restablecer las páginas;
+no se recortan selecciones silenciosamente.
 
 Las órdenes se recorren por número y conservan el acumulado del autor desde
 su primera orden, aunque la página actual comience más adelante.

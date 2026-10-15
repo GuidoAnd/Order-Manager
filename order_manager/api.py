@@ -25,6 +25,7 @@ from .article_search import ArticleSearch
 from .export_formats import ExportFormat, download_file
 from .store import MAX_INPUT_INTEGER, DomainError, Store
 from .runtime_logging import LogConfig, RequestDiagnostics
+from .journey_navigation import JourneyNavigation
 from .health import HealthCheck
 from .security import LocalSecurity, MAX_FIELDS
 from .input_validation import bounded_text
@@ -67,6 +68,7 @@ class ArticleInput(BaseModel):
 
 
 class LineInput(BaseModel):
+    line_id: str | None = Field(default=None, min_length=1, max_length=36)
     catalog_id: str | None = None
     name: str | None = None
     category: str | None = None
@@ -89,7 +91,7 @@ def order_form_rows(values: dict, count: int, inventory: dict) -> list[dict]:
         row = {
             key: values.get(f"{key}_{index}", "")
             for key in (
-                "source", "catalog_id", "name", "category", "quantity",
+                "source", "catalog_id", "line_id", "name", "category", "quantity",
                 "unit_price", "new_unit_price",
             )
         }
@@ -134,6 +136,8 @@ def order_form_lines(rows: list[dict], inventory: dict) -> list[dict]:
             line["unit_price"] = row["new_unit_price"]
         else:
             raise DomainError(f"Artículo {index}: elige Del inventario o Nuevo producto.")
+        if row.get("line_id"):
+            line["line_id"] = row["line_id"]
         lines.append(line)
     return lines
 
@@ -157,6 +161,8 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
     app.add_middleware(RequestDiagnostics, runtime=store.runtime_log)
     app.add_middleware(LocalSecurity, token=token_urlsafe(32), runtime=store.runtime_log)
     app.state.store = store
+    navigation = JourneyNavigation()
+    app.state.journey_navigation = navigation
     health = HealthCheck(store)
     app.state.health = health
 
@@ -174,7 +180,8 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
     @app.exception_handler(DomainError)
     async def domain_error(request: Request, error: DomainError):
         if not request.url.path.startswith("/api/"):
-            return HTMLResponse(web.layout("Almacenamiento no disponible", web.alert(str(error))),
+            title = "Almacenamiento no disponible" if error.status == 503 else "Acción no disponible"
+            return HTMLResponse(web.layout(title, web.alert(str(error))),
                                 status_code=error.status)
         return JSONResponse({"detail": str(error)}, status_code=error.status)
 
@@ -322,10 +329,19 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
 
     @app.get("/jornada", response_class=HTMLResponse)
     def journey_page(request: Request):
-        pages = web.journey_article_pages(dict(request.query_params))
         values = dict(request.query_params)
+        warning = ""
+        if "pages" in values:
+            journey = store.get_journey()
+            saved = navigation.load(values["pages"], journey["id"] if journey else "")
+            if saved is None:
+                values = {}
+                warning = "El enlace de navegación caducó o pertenece a otra jornada. Las tablas vuelven a la primera página."
+            else:
+                values = {**saved, **values}
         return web.journey_page(
-            store, article_pages=pages,
+            store, error=warning, navigation=navigation,
+            article_pages=web.journey_article_pages(values),
             order_pages=journey_results.page_values(values, "orders"),
             subtotal_pages=journey_results.page_values(values, "subtotals"),
         )
