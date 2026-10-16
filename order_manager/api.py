@@ -27,7 +27,7 @@ from .store import MAX_INPUT_INTEGER, DomainError, Store
 from .runtime_logging import LogConfig, RequestDiagnostics
 from .journey_navigation import JourneyNavigation
 from .health import HealthCheck
-from .security import LocalSecurity, MAX_FIELDS
+from .security import LocalSecurity, MAX_FIELDS, parse_allowed_hosts
 from .input_validation import bounded_text
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -146,6 +146,7 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
              log_config: LogConfig | None = None) -> FastAPI:
     if global_file is not None and data_dir is not None:
         raise ValueError("Indique global_file o data_dir, no ambos.")
+    allowed_hosts = parse_allowed_hosts(os.environ.get("ALLOWED_HOSTS", ""))
     directory = Path(data_dir or os.environ.get("DATA_DIR") or ROOT / "data").resolve()
     store = Store(global_file or directory / "global_stats.json", log_config=log_config)
 
@@ -159,7 +160,8 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
 
     app = FastAPI(title="Order Manager", version="0.3", lifespan=lifespan)
     app.add_middleware(RequestDiagnostics, runtime=store.runtime_log)
-    app.add_middleware(LocalSecurity, token=token_urlsafe(32), runtime=store.runtime_log)
+    app.add_middleware(LocalSecurity, token=token_urlsafe(32), runtime=store.runtime_log,
+                       allowed_hosts=allowed_hosts)
     app.state.store = store
     navigation = JourneyNavigation()
     app.state.journey_navigation = navigation

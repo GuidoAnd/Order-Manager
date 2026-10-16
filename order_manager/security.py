@@ -1,7 +1,8 @@
-"""Controles HTTP para una instancia utilizada desde el mismo dispositivo."""
+"""Controles HTTP con hosts explícitos y protección de formularios."""
 
 from contextvars import ContextVar
 from html import escape
+from ipaddress import ip_address
 import logging
 import re
 from secrets import compare_digest
@@ -16,12 +17,34 @@ MAX_BODY = 65536
 MAX_URL = 8192
 MAX_FIELDS = 4096
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+HOST_LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
 FORM_TOKEN = ContextVar("form_token", default="")
 CSP = (
     "default-src 'none'; script-src 'none'; style-src 'self' 'unsafe-inline'; "
     "img-src 'self'; font-src 'self'; connect-src 'none'; "
     "form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"
 )
+
+
+def normalize_host(host: str) -> str:
+    host = host.lower()
+    try:
+        return str(ip_address(host))
+    except ValueError:
+        if len(host) > 253 or not all(HOST_LABEL.fullmatch(label) for label in host.split(".")):
+            raise ValueError("Host inválido.") from None
+        return host
+
+
+def parse_allowed_hosts(value: str) -> frozenset[str]:
+    hosts = set(LOCAL_HOSTS)
+    for item in value.split(","):
+        if item.strip():
+            try:
+                hosts.add(normalize_host(item.strip()))
+            except ValueError:
+                raise ValueError("ALLOWED_HOSTS requiere IP o nombres de host, sin URL, puerto ni comodines.") from None
+    return frozenset(hosts)
 
 
 def protect_forms(content: str) -> str:
@@ -41,10 +64,11 @@ def origin(url: str) -> tuple[str, str, int]:
 
 
 class LocalSecurity:
-    def __init__(self, app, token: str, runtime):
+    def __init__(self, app, token: str, runtime, allowed_hosts: frozenset[str]):
         self.app = app
         self.token = token
         self.runtime = runtime
+        self.allowed_hosts = allowed_hosts
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -81,10 +105,11 @@ class LocalSecurity:
             return await reject(400, "Host inválido.")
         try:
             target = origin(f'{scope.get("scheme", "http")}://{authority}')
+            hostname = normalize_host(target[1])
         except ValueError:
             return await reject(400, "Host inválido.")
-        if target[1] not in LOCAL_HOSTS:
-            return await reject(400, "Host no permitido para uso local.")
+        if hostname not in self.allowed_hosts:
+            return await reject(400, "Host no permitido para esta instancia.")
         if len(scope.get("raw_path", b"")) + len(scope.get("query_string", b"")) > MAX_URL:
             return await reject(414, "Dirección demasiado larga.")
         try:

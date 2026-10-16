@@ -2,12 +2,13 @@
 
 ## Estado
 
-Aceptada para uso local desde un dispositivo. Las etapas de red local y nube
-requieren implementación y validación antes de habilitar esos entornos.
+Aceptada para uso local desde un dispositivo, con excepción temporal de hosts
+explícitos para acceso LAN. Las etapas de red local con identidad y de nube
+conservan sus requisitos de implementación y validación.
 
 ## Fecha
 
-2026-10-11
+2026-10-11. Actualización: 2026-10-16.
 
 ## Contexto
 
@@ -25,8 +26,21 @@ la operación, pero no identifican a quien la solicita.
 Implementar controles de entrada y de navegador para el uso inicial desde un
 solo dispositivo, mediante FastAPI, Starlette y la biblioteca estándar de Python.
 Mantener el servicio vinculado a loopback según el comando de ejecución local.
-Aceptar los hosts `localhost`, `127.0.0.1` y `::1`; esta comprobación no modifica
-la interfaz de red del servidor ni sustituye su configuración de escucha.
+Aceptar por defecto los hosts `localhost`, `127.0.0.1` y `::1`; esta comprobación
+no modifica la interfaz de red del servidor ni sustituye su configuración de escucha.
+
+La actualización del 2026-10-16 autoriza acceso LAN temporal desde varios equipos,
+incluidos móviles, mediante `ALLOWED_HOSTS`. Esta variable agrega IP o nombres
+exactos del servidor; no admite URL, puerto ni comodines y no retira loopback.
+La configuración se valida antes de abrir los datos y se fija por instancia.
+Compose mantiene loopback por defecto y permite elegir la IP de publicación con
+`APP_BIND_HOST`. Retirar los hosts adicionales y volver a loopback revoca la
+excepción al recrear el contenedor o reiniciar el proceso.
+
+La excepción conserva el resto de los controles y no incorpora autenticación,
+HTTPS, sesiones ni detección de conflictos de edición. No representa la
+implementación de las etapas futuras. Quien alcance el servicio podrá operar
+como supervisor; se conserva una instancia y un worker.
 
 - Limitar el cuerpo HTTP a 64 KiB durante su recepción, sin depender únicamente
   de `Content-Length`. Limitar ruta y consulta a 8 KiB.
@@ -89,7 +103,8 @@ invalidar automáticamente datos persistidos antes de esta decisión.
 - Un formulario abierto antes de reiniciar requiere recargar la página para
   obtener el token vigente. Varias pestañas de la misma instancia son compatibles.
 - Los clientes de la API deben enviar JSON cuando la operación lleva cuerpo.
-- Los nombres de host externos y las direcciones LAN no se admiten en esta etapa.
+- Los hosts adicionales requieren configuración explícita. La lista identifica
+  destinos del servidor y no restringe los equipos clientes que pueden alcanzarlo.
 - La política de contenido bloquea scripts y recursos externos, incluidos los
   utilizados por las páginas interactivas de Swagger y ReDoc. El esquema JSON
   continúa disponible en `/openapi.json`.
@@ -102,7 +117,7 @@ invalidar automáticamente datos persistidos antes de esta decisión.
 
 ### Etapa 2 — Varios dispositivos en una red local
 
-Antes de ampliar el acceso:
+Para sustituir la excepción temporal por acceso LAN con identidad y sesiones:
 
 - Implementar autenticación del supervisor, gestión segura de contraseñas,
   sesiones con caducidad y cierre de sesión, y cookies con atributos adecuados.

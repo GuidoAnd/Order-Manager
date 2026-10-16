@@ -28,7 +28,9 @@ compiladores fuera del runtime. UID/GID y rutas de montaje son configurables;
 el arranque exige un DATA_DIR absoluto, existente y escribible.
 
 Compose prepara una instancia, un worker, raíz de solo lectura, capacidades
-retiradas y puerto del host en loopback. Construir y ejecutar las imágenes
+retiradas y puerto del host en loopback por defecto. La actualización de ADR-005
+permite configurar la publicación mediante APP_BIND_HOST para acceso LAN temporal.
+Construir y ejecutar las imágenes
 corresponde al usuario y queda fuera de las comprobaciones de esta etapa.
 
 ## Motivos

@@ -1,6 +1,6 @@
 # Resultados de pruebas por versión
 
-Actualizado: **2026-10-15T05:20:45Z** (UTC).
+Actualizado: **2026-10-16T17:40:58Z** (UTC).
 
 Los informes se agrupan según la versión evaluada. Cada archivo conserva su
 fecha UTC, alcance y resultado PASS/FAIL. Son registros históricos: sus cantidades
@@ -14,6 +14,8 @@ no se suman ni implican que una versión en desarrollo esté terminada.
 | v0.3, auditoría posterior | [Auditoría](../audits/ERRORES_OPTIMIZACION_20261014T054458Z.md) | Suite completa final: 474 PASS en 370,25 s. Catálogo recuperado, precios históricos, identificadores de línea y navegación por token; consultas optimizadas y pruebas de interfaz sincronizadas. |
 
 ## v0.3
+
+- [Excepción temporal LAN: 498 PASS](v0_3/SEGURIDAD_LAN_20261016T174058Z.md).
 
 - [Revisión documental: enlaces, ejemplos y privacidad PASS](v0_3/DOCUMENTACION_20261015T052045Z.md).
 

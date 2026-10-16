@@ -34,8 +34,9 @@ Registros permite repetir la última descarga sin volver a contabilizar ventas.
 - [Auditorías](docs/audits/)
 
 La seguridad actual limita solicitudes y protege formularios; no autentica al
-supervisor. Antes de habilitar red local o nube deben implementarse las etapas
-previstas en el [ADR de seguridad](docs/decisions/ADR-005-seguridad-local-y-escalabilidad.md).
+supervisor. Se admite acceso temporal desde una LAN mediante hosts explícitos;
+las etapas con identidad, sesiones y control de conflictos continúan previstas en
+el [ADR de seguridad](docs/decisions/ADR-005-seguridad-local-y-escalabilidad.md).
 
 ## Desarrollo local
 
@@ -87,7 +88,9 @@ cp deployment.env.example deployment.env
 Editar `deployment.env`: `HOST_DATA_DIR` elige el directorio absoluto del host;
 `CONTAINER_DATA_DIR` indica dónde se monta dentro del contenedor y configura
 `DATA_DIR` automáticamente. `APP_UID` y `APP_GID` definen el usuario sin
-privilegios, `APP_PORT` el puerto local y `LOG_LEVEL` admite INFO o DEBUG.
+privilegios, `APP_BIND_HOST` la IP de publicación (loopback por defecto),
+`APP_PORT` el puerto y `LOG_LEVEL` admite INFO o DEBUG. `ALLOWED_HOSTS` permite
+agregar direcciones del servidor para el acceso LAN temporal descrito abajo.
 El archivo de configuración está excluido de Git.
 
 Crear el directorio de datos con permisos para el usuario elegido. Para los
@@ -110,7 +113,7 @@ docker compose --env-file deployment.env -f compose.json up -d
 ```
 
 Abrir **http://127.0.0.1:8000**; si se cambia `APP_PORT`, usar ese puerto.
-El acceso queda limitado al equipo local, con una instancia y un worker.
+El acceso predeterminado queda limitado al equipo local, con una instancia y un worker.
 La jornada, el inventario, las exportaciones y los logs permanecen en
 `HOST_DATA_DIR` al reemplazar el contenedor.
 
@@ -127,3 +130,43 @@ El contenedor incluye healthcheck. Para troubleshooting, configurar
 `down` conserva el directorio de datos del host; respaldarlo por separado.
 Consultar [Docker y datos persistentes](docs/arquitecture/DOCKER.md) para construcción
 multiarquitectura, permisos y copias de seguridad.
+
+## Acceso temporal desde otros equipos de la red local
+
+La excepción permite acceder desde móvil o escritorio sin autenticación;
+cualquier equipo que alcance el servicio puede operar como supervisor.
+Se mantiene una instancia y un worker, con tokens, origen exacto y límites activos.
+
+En `deployment.env`, reemplazar la IP del ejemplo por la IP LAN del servidor:
+
+```dotenv
+APP_BIND_HOST=192.168.1.50
+APP_PORT=8000
+ALLOWED_HOSTS=192.168.1.50
+```
+
+`ALLOWED_HOSTS` contiene las IP o nombres del servidor usados en el navegador,
+no las IP de los dispositivos clientes. Admite varios separados por comas, sin
+URL ni puerto. Los hosts de loopback siguen habilitados para el healthcheck.
+
+Usar una imagen construida con el código que admite esta configuración. Si la
+imagen instalada es anterior, reconstruirla; para Atom, usar su Dockerfile específico
+y transferir la nueva imagen al equipo de destino. Después, con la imagen local
+actualizada, recrear el contenedor sin descargar ni reconstruir en el destino:
+
+```bash
+docker compose --env-file deployment.env -f compose.json \
+  up -d --no-build --pull never
+```
+
+Abrir `http://192.168.1.50:8000` desde los equipos de la LAN.
+Para ejecutar directamente con Uvicorn:
+
+```bash
+ALLOWED_HOSTS=192.168.1.50 .venv/bin/python -m uvicorn api:app \
+  --host 192.168.1.50 --port 8000 --workers 1
+```
+
+Para volver al acceso local en Compose, dejar `ALLOWED_HOSTS=` y
+`APP_BIND_HOST=127.0.0.1`, y repetir `up -d --no-build --pull never`.
+Consultar la [guía de seguridad](docs/arquitecture/SEGURIDAD.md).

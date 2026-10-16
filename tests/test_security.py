@@ -46,7 +46,8 @@ def exchange(app, method="GET", url="/jornada", *, body=b"", headers=None, chunk
 
 
 @pytest.fixture
-def app(tmp_path):
+def app(tmp_path, monkeypatch):
+    monkeypatch.delenv("ALLOWED_HOSTS", raising=False)
     return make_app(data_dir=tmp_path / "data")
 
 
@@ -137,7 +138,7 @@ def test_local_non_browser_json_client_is_supported(app):
 
 
 @pytest.mark.parametrize("host", [b"example.com", b"127.0.0.1.example.com", b"localhost@evil.com",
-                                b"localhost/path", b"localhost#fragment"])
+                                b"localhost/path", b"localhost#fragment", b"192.168.1.50:8000"])
 def test_untrusted_host_rejected(app, host):
     before = state(app)
     assert exchange(app, headers=[(b"host", host)])[0] == 400
@@ -147,6 +148,102 @@ def test_untrusted_host_rejected(app, host):
 @pytest.mark.parametrize("host", [b"localhost:8000", b"127.0.0.1:8000", b"[::1]:8000"])
 def test_loopback_host_accepted(app, host):
     assert exchange(app, headers=[(b"host", host)])[0] == 200
+
+
+@pytest.mark.parametrize("host", [b"192.168.1.50:8000", b"ORDER-MANAGER.LOCAL:8000",
+                                b"[fd00:0:0:0:0:0:0:1]:8000", b"localhost:8000",
+                                b"127.0.0.1:8000", b"[::1]:8000"])
+def test_configured_hosts_and_loopback_are_accepted(tmp_path, monkeypatch, host):
+    monkeypatch.setenv("ALLOWED_HOSTS", "192.168.1.50, order-manager.local, fd00::1")
+    configured = make_app(data_dir=tmp_path / "data")
+    assert exchange(configured, headers=[(b"host", host)])[0] == 200
+    assert exchange(configured, url="/api/health", headers=[(b"host", host)])[0] == 200
+
+
+@pytest.mark.parametrize("value", ["*", "*.local", "http://192.168.1.50", "192.168.1.50:8000",
+                                 "server/path", "bad host", "bad..host", "-server.local",
+                                 "server.local?query", "[fd00::1]"])
+def test_invalid_allowed_hosts_fail_before_storage_is_created(tmp_path, monkeypatch, value):
+    monkeypatch.setenv("ALLOWED_HOSTS", value)
+    with pytest.raises(ValueError, match="ALLOWED_HOSTS"):
+        make_app(data_dir=tmp_path / "data")
+    assert not (tmp_path / "data").exists()
+
+
+def test_lan_exception_can_be_removed_on_restart_without_losing_data(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALLOWED_HOSTS", "192.168.1.50")
+    configured = make_app(data_dir=tmp_path / "data")
+    host = [(b"host", b"192.168.1.50:8000"), (b"content-type", b"application/json")]
+    assert exchange(configured, "POST", "/api/journey", body=b'{"title":"LAN"}', headers=host)[0] == 201
+    monkeypatch.setenv("ALLOWED_HOSTS", "")
+    assert exchange(configured, headers=host)[0] == 200
+    configured.state.store.runtime_log.close()
+    restarted = make_app(data_dir=tmp_path / "data")
+    assert exchange(restarted, headers=host)[0] == 400
+    assert exchange(restarted)[0] == 200
+    assert restarted.state.store.get_journey()["title"] == "LAN"
+
+
+def test_allowed_lan_hosts_still_enforce_origin_token_limits_and_headers(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALLOWED_HOSTS", "192.168.1.50,order-manager.local")
+    configured = make_app(data_dir=tmp_path / "data")
+    host = (b"host", b"192.168.1.50:8000")
+    csrf = token(configured)
+    values = {"action": "create", "title": "LAN", "csrf_token": csrf}
+    before = state(configured)
+    for extra in [[host, (b"origin", b"http://192.168.1.50:8001")],
+                  [host, (b"origin", b"http://order-manager.local:8000")],
+                  [host, (b"sec-fetch-site", b"cross-site")]]:
+        assert form(configured, values, extra=extra)[0] == 403
+    assert form(configured, {**values, "csrf_token": "invalid"}, extra=[host])[0] == 403
+    assert exchange(configured, headers=[(b"host", b"192.168.1.51:8000")])[0] == 400
+    assert exchange(configured, headers=[(b"host", b"192.168.1.50.evil.com:8000")])[0] == 400
+    assert exchange(configured, "POST", "/api/journey", body=b"x" * (MAX_BODY + 1),
+                    headers=[host, (b"content-type", b"application/json")])[0] == 413
+    assert state(configured) == before
+    status, headers, _, _ = form(configured, values, extra=[host, (b"origin", b"http://192.168.1.50:8000")])
+    assert status == 303
+    assert configured.state.store.get_journey()["title"] == "LAN"
+    assert headers[b"cache-control"] == b"no-store"
+    assert b"form-action 'self'" in headers[b"content-security-policy"]
+
+
+@pytest.mark.parametrize("viewport", VIEWPORTS)
+def test_two_browser_contexts_can_use_configured_lan_host(tmp_path, monkeypatch, viewport):
+    monkeypatch.setenv("ALLOWED_HOSTS", "192.168.1.50")
+
+    async def run():
+        configured = make_app(data_dir=tmp_path / "data")
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            contexts = []
+            for _ in range(2):
+                context = await browser.new_context(
+                    viewport={"width": viewport[0], "height": viewport[1]},
+                    is_mobile=viewport[0] <= 430, has_touch=viewport[0] <= 430,
+                    java_script_enabled=False,
+                )
+                await context.route("**/*", lambda route: serve_asgi(configured, route))
+                contexts.append(context)
+            first = await contexts[0].new_page()
+            await first.goto("http://192.168.1.50:8000/jornada")
+            await first.locator('input[name="title"]').fill("Jornada LAN")
+            await first.get_by_role("button", name="Crear jornada").click()
+            await first.get_by_role("heading", name="Jornada LAN").wait_for()
+            await assert_layout(first, viewport)
+            second = await contexts[1].new_page()
+            await second.goto("http://192.168.1.50:8000/jornada")
+            await second.locator(".author-add summary").click()
+            await second.locator('.author-add input[name="name"]').fill("Ana")
+            await second.get_by_role("button", name="Guardar autor").click()
+            assert await second.locator(".author-names").get_by_text("Ana").is_visible()
+            await assert_layout(second, viewport)
+            await first.reload()
+            assert await first.locator(".author-names").get_by_text("Ana").is_visible()
+            assert configured.state.store.get_journey()["authors"][0]["name"] == "Ana"
+            await browser.close()
+
+    asyncio.run(run())
 
 
 def test_stream_size_limit_stops_before_remaining_chunks(app):
