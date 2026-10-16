@@ -26,7 +26,7 @@ reconstruir la imagen y ajustar permisos antes de iniciarla.
 Compose usa raíz de solo lectura y `/tmp` temporal; los datos de negocio y logs
 viven en DATA_DIR. Se publica el puerto únicamente en `127.0.0.1`. La aplicación
 no autentica al supervisor; mantener el acceso en el dispositivo local conforme
-al [ADR de seguridad](decisions/ADR-005-seguridad-local-y-escalabilidad.md).
+al [ADR de seguridad](../decisions/ADR-005-seguridad-local-y-escalabilidad.md).
 
 ## Comandos de despliegue
 
@@ -52,9 +52,7 @@ El índice selecciona binarios de cada arquitectura. No mezcla ARM y AMD en una
 misma ejecución. La variante Atom N270/linux/386 se entrega por separado, fuera
 del repositorio de aplicación; su contexto de construcción es la raíz de esta
 aplicación y requiere `--platform linux/386`. Compila pydantic-core y MarkupSafe,
-con herramientas fijadas y CPU SSE2. El usuario realiza construcción y ejecución
-de las imágenes; las comprobaciones de esta etapa cubren configuración, arranque
-y empaquetado local.
+con herramientas fijadas y CPU SSE2. La construcción y ejecución de las imágenes corresponden al usuario.
 
 ## Salud y conservación de datos
 
@@ -69,6 +67,6 @@ incluidos revisiones, manifiesto e historial; restaurarlo con la aplicación
 apagada y verificar salud antes de reanudar. Los archivos descargados no
 sustituyen esa copia. Consultar [persistencia](PERSISTENCIA.md).
 
-Decisión: [ADR-007](decisions/ADR-007-docker-y-arquitecturas.md).
+Decisión: [ADR-007](../decisions/ADR-007-docker-y-arquitecturas.md).
 Referencias: [montajes Docker](https://docs.docker.com/engine/storage/bind-mounts/)
 y [multiarquitectura](https://docs.docker.com/build/building/multi-platform/).

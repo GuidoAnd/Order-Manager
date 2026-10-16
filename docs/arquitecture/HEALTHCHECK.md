@@ -34,7 +34,7 @@ Desde el directorio de la aplicación:
 ```
 
 En un contenedor con Python disponible se usa `python -m order_manager.healthcheck`.
-La integración del Dockerfile se realiza al configurar el despliegue.
+El Dockerfile integra este comando como HEALTHCHECK.
 
 El destino predeterminado es `http://127.0.0.1:8000/api/health`. Se puede cambiar
 mediante `HEALTHCHECK_URL` o `--url`; solo admite HTTP local, ruta `/api/health`, sin

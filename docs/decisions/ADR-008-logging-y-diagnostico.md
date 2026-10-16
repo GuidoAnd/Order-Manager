@@ -39,4 +39,4 @@ durablemente y su reproducción evita duplicados.
 ## Revisar cuando
 - Se requiera agregación externa, retención regulada o varios procesos.
 
-Consultar [logging](../LOGGING.md).
+Consultar [logging](../arquitecture/LOGGING.md).

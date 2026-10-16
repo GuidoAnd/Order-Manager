@@ -7,7 +7,7 @@ La comprobación del host no restringe por sí misma la interfaz donde escucha U
 No hay autenticación: quien pueda acceder directamente al servicio puede operar
 con la API. Antes de habilitar varios dispositivos deben implementarse los controles
 de identidad, sesiones, HTTPS y concurrencia previstos en el
-[ADR de seguridad y escalabilidad](decisions/ADR-005-seguridad-local-y-escalabilidad.md).
+[ADR de seguridad y escalabilidad](../decisions/ADR-005-seguridad-local-y-escalabilidad.md).
 
 ## Límites
 

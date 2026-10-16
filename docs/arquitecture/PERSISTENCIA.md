@@ -39,7 +39,7 @@ sin referencia confirmada no se cargan al arrancar.
 La limpieza conserva las dos revisiones referenciadas; el snapshot del último
 cierre se copia a las nuevas revisiones hasta recuperarlo o cerrar otra jornada.
 El historial operativo y los archivos aislados no se limpian automáticamente.
-La política de rotación y retención se concretará en el bloque de logging.
+El diagnóstico tiene [rotación propia](LOGGING.md); el historial de acciones no se rota.
 
 ## Inventario y órdenes
 

@@ -74,7 +74,7 @@ siguiente cierre correcto o su recuperación. Los formatos se producen a demanda
 desde ese mismo JSON; una nueva jornada activa no modifica la descarga anterior.
 En v0.3, el selector incluye el ID de cierre para distinguir nuevos cierres de
 una misma jornada. Tras rollback, los archivos requieren cerrar nuevamente la
-jornada recuperada; consultar [persistencia y recuperación](../PERSISTENCIA.md).
+jornada recuperada; consultar [persistencia y recuperación](../arquitecture/PERSISTENCIA.md).
 
 ## Motivos
 

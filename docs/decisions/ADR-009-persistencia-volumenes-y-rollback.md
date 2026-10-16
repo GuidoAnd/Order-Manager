@@ -48,4 +48,4 @@ DATA_DIR coincide con su destino. Mantener una instancia y un worker.
 ## Revisar cuando
 - Se necesiten varios escritores, consultas históricas o mayores garantías transaccionales.
 
-Consultar [persistencia](../PERSISTENCIA.md) y [Docker](../DOCKER.md).
+Consultar [persistencia](../arquitecture/PERSISTENCIA.md) y [Docker](../arquitecture/DOCKER.md).

@@ -23,7 +23,6 @@ No se acredita ejecución de contenedores a partir de estas comprobaciones.
 - sh -n docker/entrypoint.sh y git diff --check PASS.
 - El paquete copiado carga api:app, plantillas y salud, conserva jornada en
   DATA_DIR externo tras reiniciar y no escribe datos ni bytecode junto al código.
-- Ambos Dockerfiles impresos en terminal.
 
 ## Entorno
 

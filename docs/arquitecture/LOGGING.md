@@ -13,7 +13,7 @@ el mismo diagnóstico JSON por línea en consola (`stderr`) y en
 | `LOG_BACKUP_COUNT` | `5` | Entero de 1 a 100. |
 
 Las variables se leen al crear la aplicación. Un valor inválido impide iniciar
-con una configuración ambigua. No se agregaron dependencias.
+con una configuración ambigua.
 Para activar troubleshooting, iniciar la aplicación con `LOG_LEVEL=DEBUG`;
 volver a INFO y reiniciar al terminar. Mantener una instancia y un worker.
 

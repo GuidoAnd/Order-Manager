@@ -2,7 +2,7 @@
 
 Aplicación web MVP para que un supervisor gestione jornadas, autores, órdenes y artículos. Cada orden admite varios artículos con cantidad y precio unitario. Calcula totales y estadísticas, y permite exportar la jornada en JSON, CSV resumen y CSV detallado, individualmente o juntos en ZIP.
 
-La aplicación está planteada con FastAPI y Uvicorn y una interfaz HTML/CSS. La jornada, el catálogo, los acumulados y la última exportación se guardan en revisiones JSON locales y se recuperan tras reiniciar. La autenticación y la persistencia de permisos del supervisor quedan para una actualización menor posterior. MariaDB se mantiene prevista para una etapa posterior.
+La aplicación está planteada con FastAPI y Uvicorn y una interfaz HTML/CSS. La jornada, el catálogo, los acumulados y la última exportación se guardan en revisiones JSON locales y se recuperan tras reiniciar. La aplicación no incluye autenticación ni una base de datos compartida.
 
 ## Versiones
 
@@ -13,30 +13,22 @@ La aplicación está planteada con FastAPI y Uvicorn y una interfaz HTML/CSS. La
 | v0.3 | En desarrollo | Persistencia por acción, rollback y logging configurable; healthcheck, seguridad local y frontend Jinja2; empaquetado Docker multiarquitectura. |
 | v1.0 | Planificada | Versión final prevista del MVP. |
 
-La versión actual de desarrollo es v0.3 del MVP. El primer bloque incorpora
-persistencia por acción y rollback; el segundo agrega logging con DEBUG.
-El tercer bloque agrega comprobación de salud y el cuarto incorpora seguridad
-para un dispositivo local. El quinto bloque incorpora plantillas Jinja2 y pantallas propias para crear y
-editar órdenes, con serie y numeración manuales. El sexto bloque prepara Docker y montaje de datos configurable.
-La API identifica esta versión como `0.3`. Consultar el [resumen de v0.3](docs/version/v0_3.md).
-La revisión histórica de v0.2 y sus resultados están en el [resumen de v0.2](docs/version/v0_2.md).
-
-Al cerrar la jornada, un selector permite descargar CSV resumen (cantidades por
-categoría), CSV detallado (unidades e importe por artículo), JSON completo o los
-tres archivos en ZIP. En Registros, «Descargar última jornada» despliega las opciones
-para repetir las descargas hasta el siguiente cierre correcto o su recuperación, incluso tras reiniciar,
-sin volver a contabilizar ventas.
+La versión de desarrollo es v0.3; la API expone `0.3`. El
+[resumen de versión](docs/version/v0_3.md) describe el alcance y la validación.
+El cierre permite elegir JSON, CSV resumen, CSV detallado o los tres en ZIP.
+Registros permite repetir la última descarga sin volver a contabilizar ventas.
 
 ## Documentación
 
 - [Resumen de v0.1](docs/version/v0_1.md)
 - [Resumen de v0.2](docs/version/v0_2.md)
 - [Arquitectura](docs/ARQUITECTURE.md)
-- [Logging y troubleshooting](docs/LOGGING.md)
-- [Healthcheck y script operativo](docs/HEALTHCHECK.md)
-- [Seguridad para uso local](docs/SEGURIDAD.md)
-- [Interfaz, series y plantillas](docs/FRONTEND.md)
-- [Docker y montaje configurable](docs/DOCKER.md)
+- [Persistencia y recuperación](docs/arquitecture/PERSISTENCIA.md)
+- [Logging y troubleshooting](docs/arquitecture/LOGGING.md)
+- [Healthcheck y script operativo](docs/arquitecture/HEALTHCHECK.md)
+- [Seguridad para uso local](docs/arquitecture/SEGURIDAD.md)
+- [Interfaz, series y plantillas](docs/arquitecture/FRONTEND.md)
+- [Docker y montaje configurable](docs/arquitecture/DOCKER.md)
 - [Decisiones técnicas](docs/decisions/) — motivos, alternativas y consecuencias de cambios importantes.
 - [Informes de pruebas por versión](docs/tests/README.md)
 - [Auditorías](docs/audits/)
@@ -69,21 +61,15 @@ junto al código, independientemente del directorio de lanzamiento. Por ejemplo:
 DATA_DIR=/ruta/datos .venv/bin/python -m uvicorn api:app --host 127.0.0.1 --port 8000
 ```
 
-Cada modificación válida confirma una revisión coherente antes de responder éxito.
-Al reiniciar se restauran jornada, inventario, acumulados y última descarga.
-En Jornada, «Recuperar última jornada» abre una advertencia y una confirmación:
-reabre la última cerrada al momento anterior al cierre, descarta la abierta si
-existe y conserva el catálogo vigente. Los nuevos archivos requieren volver a cerrar.
+Cada acción válida confirma su revisión antes de responder éxito. El reinicio
+restaura jornada, catálogo, acumulados y descarga. La recuperación del último
+cierre exige confirmación y conserva el catálogo vigente; consultar
+[persistencia](docs/arquitecture/PERSISTENCIA.md).
 
-Se mantiene una sola instancia y un solo worker. Los datos están excluidos de Git.
-Un directorio o volumen persistente no sustituye una copia de seguridad.
-Consultar [persistencia y recuperación](docs/PERSISTENCIA.md) antes de restaurar datos.
-Los informes se agrupan por versión en [docs/tests](docs/tests/README.md).
-
-El diagnóstico se guarda en `DATA_DIR/logs/application.log` y consola, con INFO
-por defecto y `LOG_LEVEL=DEBUG` para troubleshooting. Rota a 5 MiB con 5 copias;
-el historial de acciones y cierres se conserva íntegro por separado. Consultar
-[configuración y comportamiento ante fallos](docs/LOGGING.md).
+Mantener una instancia y un worker; los datos están excluidos de Git. El diagnóstico
+usa INFO por defecto y `LOG_LEVEL=DEBUG` para troubleshooting; consultar
+[logging](docs/arquitecture/LOGGING.md). Las pruebas e informes se organizan en
+[docs/tests](docs/tests/README.md).
 
 ## Despliegue con Docker
 
@@ -139,5 +125,5 @@ docker compose --env-file deployment.env -f compose.json down
 El contenedor incluye healthcheck. Para troubleshooting, configurar
 `LOG_LEVEL=DEBUG` y volver a ejecutar `up -d` para aplicar el cambio.
 `down` conserva el directorio de datos del host; respaldarlo por separado.
-Consultar [Docker y datos persistentes](docs/DOCKER.md) para construcción
+Consultar [Docker y datos persistentes](docs/arquitecture/DOCKER.md) para construcción
 multiarquitectura, permisos y copias de seguridad.

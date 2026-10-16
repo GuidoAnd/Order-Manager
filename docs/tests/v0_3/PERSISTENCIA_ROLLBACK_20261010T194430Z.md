@@ -4,9 +4,8 @@ Fecha UTC: **2026-10-10T19:44:30Z**. Resultado: **PASS**.
 
 ## Estado evaluado
 
-Primer bloque de v0.3 implementado localmente: guardado por acción, recuperación
-ante reinicios y rollback de la última jornada. Los otros cinco bloques siguen
-pendientes. La publicación se registra por separado.
+Primer bloque de v0.3: guardado por acción, recuperación ante reinicios y rollback
+de la última jornada. Los resultados corresponden al estado evaluado en esta fecha.
 
 ## Resultados
 
@@ -50,5 +49,4 @@ una nueva dependencia de la aplicación.
 Se mantiene una instancia y un worker. Las pruebas simulan fallos de escritura
 y corrupción, sin acreditar todos los fallos físicos de almacenamiento.
 Chromium emulado no acredita dispositivos físicos, otros motores, Docker ni
-la ejecución en Intel Atom N270. Logging configurable y retención del historial
-se concretarán en el segundo bloque.
+la ejecución en Intel Atom N270.
