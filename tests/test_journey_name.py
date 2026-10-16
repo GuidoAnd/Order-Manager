@@ -76,7 +76,7 @@ async def check_name_editor(tmp_path, viewport):
         await context.route("**/*", lambda route: serve_asgi(app, route))
         page = await context.new_page()
         try:
-            await page.goto("http://order-manager.test/jornada")
+            await page.goto("http://127.0.0.1/jornada")
             editor = page.locator(".journey-name-editor")
             toggle = editor.locator("summary")
             name = editor.get_by_label("Nombre de la jornada")

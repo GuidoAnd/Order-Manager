@@ -148,7 +148,7 @@ async def check_order_browser(tmp_path, viewport):
         await context.route("**/*", lambda route: serve_asgi(app, route))
         page = await context.new_page()
         try:
-            await page.goto("http://order-manager.test/ordenes")
+            await page.goto("http://127.0.0.1/ordenes")
             views = page.locator("#order-results .order-page-size:visible")
             rows = page.locator("#order-results tbody tr:visible")
             assert await views.count() == 1
@@ -175,13 +175,15 @@ async def check_order_browser(tmp_path, viewport):
             assert await rows.get_by_text("#90", exact=True).is_visible()
             assert await views.get_by_role("link", name="Siguiente").count() == 0
             await rows.locator(".order-actions-menu summary").click()
-            await rows.get_by_role("button", name="Editar").click()
-            assert await search.input_value() == "90"
+            await rows.get_by_role("button", name="Editar orden").click()
+            assert await page.locator('input[type="hidden"][name="q"]').input_value() == "90"
             editor = page.locator("#order-editor")
+            await page.get_by_label("Serie", exact=True).select_option("10")
+            await page.get_by_label("Numeración", exact=True).fill("001")
             await editor.locator('input[name="quantity_0"]').fill("")
             await editor.get_by_role("button", name="Guardar orden").click()
             assert await page.get_by_role("alert").is_visible()
-            assert await search.input_value() == "90"
+            assert await page.locator('input[type="hidden"][name="q"]').input_value() == "90"
             await editor.locator('input[name="quantity_0"]').fill("2")
             await editor.get_by_role("button", name="Guardar orden").click()
             assert await search.input_value() == "90"

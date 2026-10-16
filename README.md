@@ -2,7 +2,7 @@
 
 Aplicación web MVP para que un supervisor gestione jornadas, autores, órdenes y artículos. Cada orden admite varios artículos con cantidad y precio unitario. Calcula totales y estadísticas, y permite exportar la jornada en JSON, CSV resumen y CSV detallado, individualmente o juntos en ZIP.
 
-La aplicación está planteada con FastAPI y Uvicorn y una interfaz HTML/CSS. Los datos de jornada son temporales en memoria; las estadísticas globales y el inventario de artículos se guardan en archivos JSON locales. La autenticación y la persistencia de permisos del supervisor quedan para una actualización menor posterior. MariaDB se mantiene prevista para una etapa posterior.
+La aplicación está planteada con FastAPI y Uvicorn y una interfaz HTML/CSS. La jornada, el catálogo, los acumulados y la última exportación se guardan en revisiones JSON locales y se recuperan tras reiniciar. La aplicación no incluye autenticación ni una base de datos compartida.
 
 ## Versiones
 
@@ -10,29 +10,32 @@ La aplicación está planteada con FastAPI y Uvicorn y una interfaz HTML/CSS. Lo
 | --- | --- | --- |
 | v0.1 | Implementada | Módulos integrados de jornadas, autores, órdenes, artículos, ventas y estadísticas. |
 | v0.2 | Implementada; revisión final documentada | Inventario persistente, resultados por autor, interfaz móvil paginada, órdenes no facturadas y exportación JSON, dos CSV o ZIP. |
+| v0.3 | En desarrollo | Persistencia por acción, rollback y logging configurable; healthcheck, seguridad local y frontend Jinja2; empaquetado Docker multiarquitectura. |
 | v1.0 | Planificada | Versión final prevista del MVP. |
 
-La versión actual es v0.2 del MVP. Su alcance incluye las correcciones de
-validación numérica, formularios antiguos y categorías, además de consultas
-del catálogo reutilizadas dentro de cada operación. El estado revisado y los
-resultados de validación se detallan en el [resumen de v0.2](docs/version/v0_2.md).
-La revisión final del 2026-10-02 pasó 285 pruebas, incluidas 70 de navegador
-desde 320 px. La API identifica esta versión como `0.2`.
-
-Al cerrar la jornada, un selector permite descargar CSV resumen (cantidades por
-categoría), CSV detallado (unidades e importe por artículo), JSON completo o los
-tres archivos en ZIP. En Registros, «Descargar última jornada» despliega las opciones
-para repetir las descargas hasta el siguiente cierre correcto o el reinicio,
-sin volver a contabilizar ventas.
+La versión de desarrollo es v0.3; la API expone `0.3`. El
+[resumen de versión](docs/version/v0_3.md) describe el alcance y la validación.
+El cierre permite elegir JSON, CSV resumen, CSV detallado o los tres en ZIP.
+Registros permite repetir la última descarga sin volver a contabilizar ventas.
 
 ## Documentación
 
 - [Resumen de v0.1](docs/version/v0_1.md)
 - [Resumen de v0.2](docs/version/v0_2.md)
 - [Arquitectura](docs/ARQUITECTURE.md)
+- [Persistencia y recuperación](docs/arquitecture/PERSISTENCIA.md)
+- [Logging y troubleshooting](docs/arquitecture/LOGGING.md)
+- [Healthcheck y script operativo](docs/arquitecture/HEALTHCHECK.md)
+- [Seguridad para uso local](docs/arquitecture/SEGURIDAD.md)
+- [Interfaz, series y plantillas](docs/arquitecture/FRONTEND.md)
+- [Docker y montaje configurable](docs/arquitecture/DOCKER.md)
 - [Decisiones técnicas](docs/decisions/) — motivos, alternativas y consecuencias de cambios importantes.
 - [Informes de pruebas por versión](docs/tests/README.md)
 - [Auditorías](docs/audits/)
+
+La seguridad actual limita solicitudes y protege formularios; no autentica al
+supervisor. Antes de habilitar red local o nube deben implementarse las etapas
+previstas en el [ADR de seguridad](docs/decisions/ADR-005-seguridad-local-y-escalabilidad.md).
 
 ## Desarrollo local
 
@@ -51,8 +54,76 @@ Para preparar el entorno de pruebas y desarrollo, instalar
 Las herramientas ASGI que requieren un módulo en la raíz pueden importar `app`
 desde `api.py`; ese archivo expone la misma aplicación.
 
-La jornada activa y la última exportación se mantienen en memoria y se pierden
-al reiniciar. Las estadísticas globales se guardan en `data/global_stats.json`
-y el catálogo en `data/inventory.json`; ambos archivos están excluidos de Git.
-La arquitectura requiere una sola instancia y un solo proceso de aplicación.
-Los informes de resultados se agrupan por versión en [docs/tests](docs/tests/README.md).
+La ruta de datos se configura mediante `DATA_DIR`; por defecto se usa `data/`
+junto al código, independientemente del directorio de lanzamiento. Por ejemplo:
+
+```bash
+DATA_DIR=/ruta/datos .venv/bin/python -m uvicorn api:app --host 127.0.0.1 --port 8000
+```
+
+Cada acción válida confirma su revisión antes de responder éxito. El reinicio
+restaura jornada, catálogo, acumulados y descarga. La recuperación del último
+cierre exige confirmación y conserva el catálogo vigente; consultar
+[persistencia](docs/arquitecture/PERSISTENCIA.md).
+
+Mantener una instancia y un worker; los datos están excluidos de Git. El diagnóstico
+usa INFO por defecto y `LOG_LEVEL=DEBUG` para troubleshooting; consultar
+[logging](docs/arquitecture/LOGGING.md). Las pruebas e informes se organizan en
+[docs/tests](docs/tests/README.md).
+
+## Despliegue con Docker
+
+Requiere Docker Engine y el plugin Docker Compose en el equipo de despliegue.
+Ejecutar desde la raíz del repositorio. El Dockerfile utiliza Python 3.13.16
+sobre Alpine 3.23 y admite equipos modernos `amd64` y `arm64`; Compose construye
+la imagen correspondiente a la arquitectura del equipo.
+
+Preparar la configuración del administrador:
+
+```bash
+cp deployment.env.example deployment.env
+```
+
+Editar `deployment.env`: `HOST_DATA_DIR` elige el directorio absoluto del host;
+`CONTAINER_DATA_DIR` indica dónde se monta dentro del contenedor y configura
+`DATA_DIR` automáticamente. `APP_UID` y `APP_GID` definen el usuario sin
+privilegios, `APP_PORT` el puerto local y `LOG_LEVEL` admite INFO o DEBUG.
+El archivo de configuración está excluido de Git.
+
+Crear el directorio de datos con permisos para el usuario elegido. Para los
+valores del ejemplo (`/srv/order-manager/data`, UID/GID `10001`):
+
+```bash
+sudo install -d -m 0750 -o 10001 -g 10001 /srv/order-manager/data
+```
+
+Si se modifican la ruta o los identificadores, ajustar ese comando a los valores
+configurados. El contenedor exige que el directorio exista y sea escribible;
+no cambia sus propietarios durante el arranque.
+
+Comprobar la configuración, construir la imagen y levantar el contenedor:
+
+```bash
+docker compose --env-file deployment.env -f compose.json config
+docker compose --env-file deployment.env -f compose.json build
+docker compose --env-file deployment.env -f compose.json up -d
+```
+
+Abrir **http://127.0.0.1:8000**; si se cambia `APP_PORT`, usar ese puerto.
+El acceso queda limitado al equipo local, con una instancia y un worker.
+La jornada, el inventario, las exportaciones y los logs permanecen en
+`HOST_DATA_DIR` al reemplazar el contenedor.
+
+Consultar el estado y los logs, o detener el despliegue:
+
+```bash
+docker compose --env-file deployment.env -f compose.json ps
+docker compose --env-file deployment.env -f compose.json logs --tail 100
+docker compose --env-file deployment.env -f compose.json down
+```
+
+El contenedor incluye healthcheck. Para troubleshooting, configurar
+`LOG_LEVEL=DEBUG` y volver a ejecutar `up -d` para aplicar el cambio.
+`down` conserva el directorio de datos del host; respaldarlo por separado.
+Consultar [Docker y datos persistentes](docs/arquitecture/DOCKER.md) para construcción
+multiarquitectura, permisos y copias de seguridad.

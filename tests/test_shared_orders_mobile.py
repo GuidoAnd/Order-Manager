@@ -3,7 +3,7 @@
 import asyncio
 
 import pytest
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, expect
 
 from order_manager.api import make_app
 from test_journey_subtotals import add_order
@@ -31,7 +31,7 @@ async def check_shared_page(tmp_path, viewport):
         page = await context.new_page()
         page.set_default_timeout(5000)
         try:
-            await page.goto("http://order-manager.test/ordenes")
+            await page.goto("http://127.0.0.1/ordenes")
             view = page.locator("#order-results .order-page-size:visible")
             rows = view.locator("tbody tr")
             assert await view.count() == 1
@@ -40,7 +40,7 @@ async def check_shared_page(tmp_path, viewport):
                 author["name"] for author in authors
             }
             assert await view.get_by_role("heading", name="Sin órdenes", exact=True).count() == 0
-            assert await view.get_by_role("button", name="Editar", exact=True).count() == 0
+            assert await view.get_by_role("button", name="Editar orden", exact=True).count() == 0
             assert await view.get_by_role("button", name="Eliminar", exact=True).count() == 0
             await assert_layout(page, viewport)
             await view.get_by_role("link", name="Siguiente").click()
@@ -55,10 +55,12 @@ async def check_shared_page(tmp_path, viewport):
             await view.get_by_role("link", name="Siguiente").click()
             assert await rows.count() == 3
             await view.get_by_role("link", name="Anterior").click()
+            await expect(view.get_by_role("status")).to_have_text("8 órdenes · Página 1 de 2")
+            await page.wait_for_load_state("load")
             action = rows.first.locator(".order-actions-menu")
-            await action.locator("summary").focus()
-            await page.keyboard.press("Enter")
-            edit = action.get_by_role("button", name="Editar", exact=True)
+            await action.locator("summary").press("Enter")
+            await expect(action).to_have_attribute("open", "")
+            edit = action.get_by_role("button", name="Editar orden", exact=True)
             delete = action.get_by_role("button", name="Eliminar", exact=True)
             for control in (action.locator("summary"), edit, delete):
                 assert (await control.bounding_box())["height"] >= 44

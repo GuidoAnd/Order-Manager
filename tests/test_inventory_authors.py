@@ -13,6 +13,8 @@ from order_manager.web import articles_page, dashboard, journey_page, orders_pag
 
 
 def asgi_json(app, method, path, payload=None):
+    if payload is not None and method in ("POST", "PUT") and path.startswith("/api/orders"):
+        payload = {"series": "10", "serial_number": 1, **payload}
     body = json.dumps(payload).encode("utf-8") if payload is not None else b""
     messages = []
 
@@ -31,7 +33,7 @@ def asgi_json(app, method, path, payload=None):
         "query_string": b"",
         "headers": [(b"content-type", b"application/json")],
         "scheme": "http",
-        "server": ("test", 80),
+        "server": ("127.0.0.1", 80),
         "client": ("test", 1),
         "root_path": "",
     }
@@ -83,7 +85,7 @@ def test_initial_inventory_persists_and_unpriced_article_needs_order_price(tmp_p
     assert len(inventory["subcategories"]) == 21
     assert len(inventory["articles"]) == 68
     assert inventory == initial_inventory()
-    assert (tmp_path / "inventory.json").exists()
+    assert store.storage.component_path("inventory").exists()
 
     journey = store.create_journey("Tarde")
     assert len(journey["articles"]) == len(inventory["articles"])
@@ -106,6 +108,7 @@ def test_initial_inventory_persists_and_unpriced_article_needs_order_price(tmp_p
 
     restored = Store(path)
     assert restored.get_inventory() == inventory
+    restored.discard_journey()
     restored.create_journey("Noche")
     assert any(
         article["id"] == water["id"]
@@ -151,6 +154,7 @@ def test_catalog_changes_persist_without_changing_existing_orders(tmp_path):
     restored = Store(path)
     assert any(item["id"] == custom["id"] for item in restored.get_inventory()["articles"])
     assert any(item["name"] == "Comida nueva" for item in restored.get_inventory()["categories"])
+    restored.discard_journey()
     restored.create_journey("Noche")
     assert next(
         item for item in restored.get_journey()["articles"]
@@ -166,8 +170,8 @@ def test_failed_inventory_write_keeps_catalog_intact(tmp_path, monkeypatch):
     def fail_write(*_args):
         raise OSError("disk full")
 
-    monkeypatch.setattr(store, "_write_json", fail_write)
-    with pytest.raises(DomainError, match="No se pudo guardar el catálogo"):
+    monkeypatch.setattr("order_manager.persistence.write_json", fail_write)
+    with pytest.raises(DomainError, match="No se pudo confirmar el guardado"):
         store.add_article({
             "name": "Nuevo",
             "category": "Otros",
@@ -178,7 +182,7 @@ def test_failed_inventory_write_keeps_catalog_intact(tmp_path, monkeypatch):
     assert store.get_journey()["articles"] == original["articles"]
 
 
-def test_order_article_is_reusable_only_while_sold_and_keeps_history(tmp_path):
+def test_order_article_remains_in_inventory_and_keeps_history(tmp_path):
     path = tmp_path / "global.json"
     store = Store(path)
     store.create_journey("Tarde")
@@ -195,13 +199,13 @@ def test_order_article_is_reusable_only_while_sold_and_keeps_history(tmp_path):
         article for article in store.get_available_articles()
         if article["name"] == line["name"]
     )
-    assert temporary["temporary"] is True
+    assert not temporary.get("temporary", False)
     assert temporary["unit_price"] == 1800
-    assert "Limonada de la casa · 1800 · de esta jornada" in orders_page(store)
-    assert "Temporal de esta jornada" in articles_page(
+    assert "Limonada de la casa · 1800" in orders_page(store, editor=True)
+    assert "Temporal de esta jornada" not in articles_page(
         store, search=ArticleSearch(query=line["name"]),
     )
-    assert not any(
+    assert any(
         article["name"] == line["name"]
         for article in store.get_inventory()["articles"]
     )
@@ -219,7 +223,7 @@ def test_order_article_is_reusable_only_while_sold_and_keeps_history(tmp_path):
 
     replacement = {**line, "name": "Jugo de la casa", "quantity": 1}
     store.save_order(author["id"], [replacement], second["id"])
-    assert not any(
+    assert any(
         article["id"] == temporary["id"]
         for article in store.get_available_articles()
     )
@@ -232,13 +236,13 @@ def test_order_article_is_reusable_only_while_sold_and_keeps_history(tmp_path):
     assert exported["orders"][0]["lines"][0]["name"] == replacement["name"]
     article_key = "Bebidas sin alcohol / Preparados de la casa / Jugo de la casa"
     assert Store(path).get_globals()["by_article"][article_key]["units"] == 1
-    assert not any(
+    assert any(
         article["name"] == replacement["name"]
         for article in Store(path).get_inventory()["articles"]
     )
 
 
-def test_temporary_article_disappears_after_last_order_is_deleted(tmp_path):
+def test_new_article_persists_after_last_order_is_deleted(tmp_path):
     store = Store(tmp_path / "global.json")
     store.create_journey("Tarde")
     author = store.add_author("Ana")
@@ -254,11 +258,11 @@ def test_temporary_article_disappears_after_last_order_is_deleted(tmp_path):
         for article in store.get_available_articles()
     )
     store.delete_order(order["id"])
-    assert not any(
+    assert any(
         article["name"] == "Agua de los cielos"
         for article in store.get_available_articles()
     )
-    assert "Agua de los cielos" not in articles_page(store)
+    assert "Agua de los cielos" in articles_page(store)
 
 
 def test_author_views_keep_orders_and_totals_separate(tmp_path):
@@ -301,5 +305,5 @@ def test_author_views_keep_orders_and_totals_separate(tmp_path):
 
     grouped = orders_page(store)
     assert "Órdenes por autor" in grouped
-    assert 'optgroup label="Cafetería / Infusiones"' in grouped
-    assert "precio a completar" in grouped
+    assert 'optgroup label="Cafetería / Infusiones"' in orders_page(store, editor=True)
+    assert "precio a completar" in orders_page(store, editor=True)

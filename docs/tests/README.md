@@ -1,6 +1,6 @@
 # Resultados de pruebas por versión
 
-Actualizado: **2026-10-02T13:55:35Z** (UTC).
+Actualizado: **2026-10-15T05:20:45Z** (UTC).
 
 Los informes se agrupan según la versión evaluada. Cada archivo conserva su
 fecha UTC, alcance y resultado PASS/FAIL. Son registros históricos: sus cantidades
@@ -10,6 +10,22 @@ no se suman ni implican que una versión en desarrollo esté terminada.
 | --- | --- | --- |
 | v0.1 | [v0_1/](v0_1/) | Revisión final PASS: 22 pruebas funcionales e integrales de jornadas, autores, órdenes, artículos, estadísticas y cierre JSON. |
 | v0.2, revisión final | [v0_2/](v0_2/) | Suite completa: 285 PASS (215 unitarias/integrales y 70 de navegador), en 205,96 s. Incluye flujo principal, interfaz desde 320 px, exportación JSON/dos CSV/ZIP y regresiones de validación numérica, formularios antiguos y categorías. |
+| v0.3, bloques 1 a 6 | [v0_3/](v0_3/) | Suite histórica de frontend: 437 PASS. Preparación Docker: 128 casos pertinentes PASS y configuración Compose verificada; construcción/ejecución a cargo del usuario. |
+| v0.3, auditoría posterior | [Auditoría](../audits/ERRORES_OPTIMIZACION_20261014T054458Z.md) | Suite completa final: 474 PASS en 370,25 s. Catálogo recuperado, precios históricos, identificadores de línea y navegación por token; consultas optimizadas y pruebas de interfaz sincronizadas. |
+
+## v0.3
+
+- [Revisión documental: enlaces, ejemplos y privacidad PASS](v0_3/DOCUMENTACION_20261015T052045Z.md).
+
+- [Auditoría de errores y optimización: 474 PASS](../audits/ERRORES_OPTIMIZACION_20261014T054458Z.md).
+
+- [Preparación Docker: 128 casos pertinentes PASS](v0_3/DOCKER_PREPARACION_20261014T050510Z.md).
+
+- [Healthcheck y regresiones pertinentes: 65 PASS](v0_3/HEALTHCHECK_20261010T201639Z.md).
+
+- [Logging y regresiones: 328 PASS](v0_3/LOGGING_20261010T201034Z.md).
+
+- [Persistencia y rollback: 311 PASS](v0_3/PERSISTENCIA_ROLLBACK_20261010T194430Z.md).
 
 ## v0.1
 
@@ -24,7 +40,7 @@ no se suman ni implican que una versión en desarrollo esté terminada.
 ## v0.2
 
 Incluye las comprobaciones de transición posteriores a la revisión de v0.1 y
-las funcionalidades y correcciones de la versión actual.
+las funcionalidades y correcciones evaluadas en esa versión.
 
 - [Revisión final de v0.2: 285 PASS](v0_2/V0_2_FINAL_REVIEW_20261002T133719Z.md).
 - El mismo informe registra 120 regresiones PASS tras fijar los metadatos de API
@@ -69,3 +85,13 @@ constituyen validación en dispositivos físicos o en otros motores.
 ## Auditorías
 
 Los resultados de las auditorías están en [docs/audits](../audits/).
+
+## Seguridad local de v0.3
+
+Suite completa: **411 PASS**, sin fallos; 56 casos de seguridad incluidos.
+[Informe UTC](v0_3/SEGURIDAD_20261011T233150Z.md).
+
+## Frontend y Jinja2 de v0.3
+
+Suite completa: **437 PASS**, sin fallos; 26 casos nuevos incluidos.
+[Informe UTC](v0_3/FRONTEND_JINJA2_20261014T035721Z.md).

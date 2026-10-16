@@ -1,0 +1,22 @@
+<form class="article-search" method="get" action="/articulos#article-results">
+        <input type="hidden" name="sold_page" value="{{ search_sold_page }}">
+        <label>Buscar por nombre
+            <input type="search" name="q" value="{{ search_query }}">
+        </label>
+        <details{{ open_if_search_category_or_search_subcategory_else | safe }}>
+            <summary>Filtros de categoría y subcategoría</summary>
+            <label>Categoría
+                <select name="category"><option value="">Todas</option>{{ categories | safe }}</select>
+            </label>
+            <label>Subcategoría
+                <select name="subcategory"><option value="">Todas</option>
+                    {{ join_subcategories | safe }}
+                </select>
+            </label>
+        </details>
+        <div class="actions">
+            <button type="submit">Buscar</button>
+            <a class="button quiet" href="{{ ArticleSearch_sold_page_search_sold_page_url }}#article-results">Limpiar búsqueda</a>
+        </div>
+    </form>
+    <div id="available-articles">{{ results | safe }}</div>

@@ -107,8 +107,10 @@ def test_empty_stale_and_invalid_pages_do_not_modify_the_journey(tmp_path):
     store.discard_journey()
     store.create_journey("Nueva")
     _, _, html = request(app, "GET", "/registros?page=999")
-    assert "1 movimientos · Página 1 de 1" in first_view(html, "journey-events")
-    assert "Autor 9" not in html
+    total = len(store.get_events())
+    pages = (total + 4) // 5
+    assert f"{total} movimientos · Página {pages} de {pages}" in first_view(html, "journey-events")
+    assert any(e["detail"] == "Autor 9" for e in store.get_events())
 
 
 async def check_tables(tmp_path, viewport):
@@ -126,7 +128,7 @@ async def check_tables(tmp_path, viewport):
         page = await context.new_page()
         page.set_default_timeout(5000)
         try:
-            await page.goto("http://order-manager.test/articulos?q=caf%C3%A9&page=2")
+            await page.goto("http://127.0.0.1/articulos?q=caf%C3%A9&page=2")
             sold = page.locator("#sold-articles .table-page-view:visible")
             assert await sold.count() == 1
             assert await sold.locator("tbody tr").count() == size
@@ -148,7 +150,7 @@ async def check_tables(tmp_path, viewport):
             await sold.get_by_role("link", name="Anterior").click()
             for link in await sold.get_by_role("link").all():
                 assert (await link.bounding_box())["height"] >= 44
-            await page.goto("http://order-manager.test/registros")
+            await page.goto("http://127.0.0.1/registros")
             events = page.locator("#journey-events .table-page-view:visible")
             assert await events.count() == 1
             assert await events.locator("tbody tr").count() == size

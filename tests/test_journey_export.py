@@ -50,7 +50,7 @@ def test_price_history_preserves_the_prices_sold_in_each_order(tmp_path):
     assert data["statistics"]["revenue"] == first["total"] + second["total"]
 
 
-def test_new_articles_include_unsold_catalog_and_current_temporary_products(tmp_path):
+def test_new_articles_include_unsold_catalog_and_products_from_deleted_orders(tmp_path):
     store, author = setup_store(tmp_path)
     catalog = store.add_article(product("Nuevo catálogo"))
     removed = store.add_article(product("Alta eliminada"))
@@ -61,11 +61,11 @@ def test_new_articles_include_unsold_catalog_and_current_temporary_products(tmp_
     store.delete_order(deleted_order["id"])
     data = json.loads(store.close_journey())
     articles = {item["name"]: item for item in data["new_articles"]}
-    assert set(articles) == {"Nuevo catálogo", "Alta eliminada", "Temporal"}
+    assert set(articles) == {"Nuevo catálogo", "Alta eliminada", "Temporal", "Temporal eliminado"}
     assert articles["Nuevo catálogo"]["unit_price"] == 200
     assert not articles["Nuevo catálogo"]["temporary"]
     assert articles["Alta eliminada"]["deleted"]
-    assert articles["Temporal"]["temporary"] and not articles["Temporal"]["deleted"]
+    assert not articles["Temporal"]["temporary"] and not articles["Temporal"]["deleted"]
 
 
 def test_renamed_or_deleted_initial_article_is_not_reported_as_new(tmp_path):
@@ -100,11 +100,11 @@ def test_failed_inventory_write_does_not_add_export_activity(tmp_path, monkeypat
     initial = store.get_available_articles()[0]
     before = deepcopy(store.get_journey())
 
-    def fail(_data):
+    def fail(*_args):
         raise DomainError("Fallo de escritura", 503)
 
     with monkeypatch.context() as patch:
-        patch.setattr(store, "_write_inventory", fail)
+        patch.setattr(store.storage, "commit", fail)
         with pytest.raises(DomainError):
             if action == "create":
                 store.add_article(product())
@@ -122,11 +122,11 @@ def test_failed_close_keeps_changes_for_retry_and_new_journey_resets_them(tmp_pa
     store.save_order(author["id"], [{"catalog_id": article["id"], "quantity": 1}])
     before = deepcopy(store.get_journey())
 
-    def fail(_data):
+    def fail(*_args):
         raise DomainError("Fallo de escritura", 503)
 
     with monkeypatch.context() as patch:
-        patch.setattr(store, "_write_globals", fail)
+        patch.setattr(store.storage, "commit", fail)
         with pytest.raises(DomainError):
             store.close_journey()
     assert store.get_journey() == before

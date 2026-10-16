@@ -1,0 +1,11 @@
+<section class="panel">
+        <p>Jornada: <strong>{{ journey_title }}</strong>.</p>
+        <p>{{ effect }}</p>
+        <form method="post" action="/ui/journey">
+            <input type="hidden" name="action" value="{{ action | safe }}">
+            <input type="hidden" name="confirm" value="yes">
+            <input type="hidden" name="journey_id" value="{{ journey_id }}">
+            <button class="{{ button_class | safe }}" type="submit">{{ button_label }}</button>
+            <a class="button quiet" href="/jornada">Cancelar</a>
+        </form>
+    </section>

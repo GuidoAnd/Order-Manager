@@ -1,0 +1,10 @@
+<div class="new-article-fields taxonomy-fields">
+        <label>Nombre
+            <input name="name_{{ index | safe }}" value="{{ row_get_name }}">
+        </label>
+        {{ taxonomy_fields_index_row_inventory | safe }}
+        <label class="line-price">Precio unitario del producto nuevo
+            <input name="new_unit_price_{{ index_2 | safe }}" type="number" min="0" step="1"
+                   value="{{ price }}">
+        </label>
+    </div>

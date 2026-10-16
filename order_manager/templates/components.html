@@ -1,0 +1,21 @@
+{% macro alert(message) -%}
+{% if message %}<p class="alert" role="alert">{{ message }}</p>{% endif %}
+{%- endmacro %}
+
+{% macro hidden_fields(fields) -%}
+{% for name, value in fields.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+{%- endmacro %}
+
+{% macro metrics(pairs) -%}
+<div class="metrics">{% for label, value in pairs %}<div class="metric">
+    <strong>{{ value }}</strong><span>{{ label }}</span>
+</div>{% endfor %}</div>
+{%- endmacro %}
+
+{% macro author_options(authors, selected) -%}
+{% for author in authors %}<option value="{{ author.id }}"{% if author.id == selected %} selected{% endif %}>{{ author.name }}</option>{% endfor %}
+{%- endmacro %}
+
+{% macro cells(values, labels) -%}
+<tr>{% for value in values %}<td data-label="{{ labels[loop.index0] }}">{{ value | safe }}</td>{% endfor %}</tr>
+{%- endmacro %}

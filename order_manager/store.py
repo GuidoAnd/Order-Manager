@@ -1,18 +1,25 @@
-"""Estado temporal de jornada y acumulados globales en JSON."""
+"""Lógica de jornadas y catálogo con confirmación persistente por operación."""
 from __future__ import annotations
 
+from collections import Counter
 from copy import deepcopy
 from datetime import datetime, timezone
+from functools import wraps
 import json
-import os
+import logging
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from threading import RLock
-from uuid import NAMESPACE_URL, uuid4, uuid5
+from uuid import uuid4
 
 from .article_search import article_identity
+from .order_lines import line_identifier
+from .order_series import validate_serial
 from .journey_export import build_export
 from .seed_inventory import initial_inventory
+from .persistence import RevisionStorage, StorageError
+from .state_validation import validate_state
+from .runtime_logging import LogConfig, RuntimeLog
+from .input_validation import MAX_TAXONOMY, bounded_text
 
 
 MAX_INPUT_INTEGER = 2**63 - 1
@@ -22,6 +29,13 @@ class DomainError(Exception):
     def __init__(self, message: str, status: int = 400):
         super().__init__(message)
         self.status = status
+
+
+def business_text(value: str, label: str, maximum: int = 200) -> str:
+    try:
+        return bounded_text(value, label, maximum)
+    except ValueError as error:
+        raise DomainError(str(error)) from None
 
 
 def bounded_integer(value: object, minimum: int, message: str) -> int:
@@ -128,8 +142,46 @@ def summary(journey: dict) -> dict:
     return result
 
 
+def mutating(method):
+    """Publica una acción completa bajo el mismo bloqueo usado por las consultas."""
+    @wraps(method)
+    def execute(self, *args, **kwargs):
+        with self.lock:
+            self._ensure_storage()
+            before = self._state()
+            self._action_events = []
+            context = {"journey_id": (self.journey or {}).get("id"), "revision": self.storage.revision}
+            self.runtime_log.record(logging.DEBUG, "Inicio de acción.", method.__name__, phase="mutation", **context)
+            phase = "mutation"
+            try:
+                result = method(self, *args, **kwargs)
+                phase = "persistence"
+                committed = self.storage.commit(self._state(), method.__name__, self._action_events)
+                self._operation = committed["operation"]
+                self.runtime_log.record(logging.INFO, "Acción confirmada.", method.__name__,
+                                        journey_id=(self.journey or {}).get("id") or context["journey_id"],
+                                        revision=self.storage.revision)
+                return result
+            except Exception as error:
+                self._restore(before)
+                if not isinstance(error, DomainError):
+                    self.runtime_log.record(logging.ERROR, "La acción no pudo confirmarse.", method.__name__,
+                                            error=error, phase=phase, **context)
+                else:
+                    self.runtime_log.record(logging.DEBUG, "Acción rechazada por validación.", method.__name__,
+                                            status=error.status, **context)
+                if isinstance(error, (OSError, StorageError)):
+                    raise DomainError(
+                        "No se pudo confirmar el guardado. Revise el almacenamiento antes de reintentar.", 503,
+                    ) from error
+                raise
+            finally:
+                self._action_events = []
+    return execute
+
+
 class Store:
-    def __init__(self, global_file: Path):
+    def __init__(self, global_file: Path, *, log_config: LogConfig | None = None):
         self.lock = RLock()
         self.journey: dict | None = None
         self.last_export: tuple[str, bytes] | None = None
@@ -138,17 +190,106 @@ class Store:
         self._journey_catalog_keys: set[tuple[str, str, str]] = set()
         self.global_file = global_file
         self.inventory_file = global_file.parent / "inventory.json"
-        if global_file.exists():
-            self.globals = migrate_article_statistics(json.loads(global_file.read_text()))
-        else:
-            self.globals = fresh_globals()
-        if self.inventory_file.exists():
-            self.inventory = json.loads(self.inventory_file.read_text())
-        else:
-            self.inventory = initial_inventory()
-            self._write_inventory(self.inventory)
+        self.data_dir = global_file.parent.resolve()
+        self.runtime_log = RuntimeLog(self.data_dir, log_config)
+        self.storage = RevisionStorage(self.data_dir, runtime_log=self.runtime_log)
+        self.rollback: dict | None = None
+        self._export_close_id: str | None = None
+        self._operation: dict | None = None
+        self._action_events: list[dict] = []
+        self.globals = fresh_globals()
+        self.inventory = initial_inventory()
+        loaded = self.storage.load()
+        if loaded is not None:
+            self._restore(loaded)
+        elif not self.storage.blocked:
+            try:
+                legacy = global_file.exists() or self.inventory_file.exists()
+                if legacy and not self.inventory_file.exists():
+                    raise ValueError("Falta el inventario de la instalación existente.")
+                if global_file.exists():
+                    self.globals = migrate_article_statistics(json.loads(global_file.read_text()))
+                if self.inventory_file.exists():
+                    self.inventory = json.loads(self.inventory_file.read_text())
+                validate_state(self._state())
+                committed = self.storage.commit(self._state(), "migration" if legacy else "initialize", [])
+                self._operation = committed["operation"]
+            except (OSError, ValueError, KeyError, TypeError, StorageError) as error:
+                self.runtime_log.record(logging.ERROR, "Inicialización o migración fallida.", "storage_initialize", error=error)
+                self.storage.blocked = True
+                self.storage.warn("Los datos no pudieron inicializarse o migrarse. Restaure archivos válidos antes de operar.")
+
+        self.runtime_log.record(logging.INFO, "Aplicación inicializada.", "startup",
+                                revision=self.storage.revision, phase="blocked" if self.storage.blocked else "ready")
+
+    def _ensure_storage(self) -> None:
+        if self.storage.blocked:
+            raise DomainError("El almacenamiento requiere recuperación. " + " ".join(self.storage.warnings), 503)
+
+    def _journey_state(self) -> dict:
+        return deepcopy({"data": self.journey, "activity": {
+            "new_articles": self._new_catalog_articles, "price_changes": self._price_changes,
+            "catalog_keys": [list(key) for key in sorted(self._journey_catalog_keys)],
+        }})
+
+    def _state(self) -> dict:
+        export = None
+        if self.last_export:
+            export = {"journey_id": self.last_export[0], "close_id": self._export_close_id,
+                      "document": json.loads(self.last_export[1])}
+        return deepcopy({"inventory": self.inventory, "global_stats": self.globals,
+                         "journey": self._journey_state(), "rollback": self.rollback,
+                         "last_export": export, "operation": self._operation})
+
+    def _restore(self, state: dict) -> None:
+        state = deepcopy(state)
+        self.inventory = state["inventory"]
+        self.globals = state["global_stats"]
+        active = state["journey"]
+        self.journey = active["data"]
+        self._new_catalog_articles = active["activity"]["new_articles"]
+        self._price_changes = active["activity"]["price_changes"]
+        self._journey_catalog_keys = {tuple(key) for key in active["activity"]["catalog_keys"]}
+        self.rollback = state["rollback"]
+        export = state["last_export"]
+        self.last_export = (export["journey_id"], json.dumps(export["document"], ensure_ascii=False,
+                                                          indent=2).encode()) if export else None
+        self._export_close_id = export["close_id"] if export else None
+        self._operation = state["operation"]
+
+    def recovery_info(self) -> dict | None:
+        with self.lock:
+            self._ensure_storage()
+            if not self.rollback:
+                return None
+            target = self.rollback["journey"]["data"]
+            return {"journey_id": target["id"], "title": target["title"],
+                    "close_id": self.rollback["close_id"], "revision": self.storage.revision,
+                    "active_id": self.journey["id"] if self.journey else "",
+                    "active_title": self.journey["title"] if self.journey else ""}
+
+    @mutating
+    def recover_journey(self, close_id: str, revision: str, active_id: str) -> dict:
+        info = self.recovery_info()
+        if not info or (close_id, revision, active_id) != (info["close_id"], info["revision"], info["active_id"]):
+            raise DomainError("La recuperación cambió. Revise y confirme nuevamente la jornada.", 409)
+        snapshot = deepcopy(self.rollback)
+        if self.journey:
+            self._event("journey_discarded_for_recovery", self.journey["title"])
+        active = snapshot["journey"]
+        self.journey = active["data"]
+        self._new_catalog_articles = active["activity"]["new_articles"]
+        self._price_changes = active["activity"]["price_changes"]
+        self._journey_catalog_keys = {tuple(k) for k in active["activity"]["catalog_keys"]}
+        self.globals = snapshot["globals_before"]
+        self.rollback = None
+        self.last_export = None
+        self._export_close_id = None
+        self._event("journey_recovered", self.journey["title"], journey_event=False)
+        return deepcopy(self.journey)
 
     def _active(self, expected_id: str | None = None) -> dict:
+        self._ensure_storage()
         if self.journey is None:
             raise DomainError("No hay jornada activa.", 409)
         if expected_id is not None and self.journey["id"] != expected_id:
@@ -164,29 +305,37 @@ class Store:
                 return item
         raise DomainError(f"{name} no encontrado.", 404)
 
-    def _event(self, action: str, detail: str) -> None:
+    def _event(self, action: str, detail: str, journey_event: bool = True) -> None:
         entry = {"at": now(), "action": action, "detail": detail}
-        self._active()["events"].append(entry)
+        journey = self._active()
+        if journey_event:
+            journey["events"].append(entry)
+        self._action_events.append({**entry, "journey_id": journey["id"]})
 
     def get_events(self) -> list[dict]:
         with self.lock:
-            return deepcopy(self.journey["events"]) if self.journey else []
+            self._ensure_storage()
+            return self.storage.history((self._operation or {}).get("pending_events", []))
 
     def get_journey(self) -> dict | None:
         with self.lock:
+            self._ensure_storage()
             return deepcopy(self.journey)
 
     def get_globals(self) -> dict:
         with self.lock:
+            self._ensure_storage()
             return deepcopy(self.globals)
 
     def get_inventory(self) -> dict:
         with self.lock:
+            self._ensure_storage()
             return deepcopy(self.inventory)
 
     def get_order_inventory(self, order_id: str = "") -> dict:
         """Incluye las categorías originales solo al editar su orden."""
         with self.lock:
+            self._ensure_storage()
             inventory = deepcopy(self.inventory)
             if order_id:
                 order = self._find(self._active()["orders"], order_id, "Orden")
@@ -197,49 +346,25 @@ class Store:
     def get_available_articles(self) -> list[dict]:
         with self.lock:
             journey = self._active()
-            return deepcopy(journey["articles"] + self._temporary_articles(journey))
+            return deepcopy(self.inventory["articles"])
 
-    @staticmethod
-    def _temporary_articles(journey: dict) -> list[dict]:
-        def article_key(article: dict) -> tuple[str, str, str]:
-            return tuple(
-                article[field].casefold()
-                for field in ("category", "subcategory", "name")
-            )
-
-        catalog_keys = {article_key(article) for article in journey["articles"]}
-        temporary = {}
-        for order in journey["orders"]:
-            if not is_sale(order):
-                continue
-            for line in order["lines"]:
-                key = article_key(line)
-                if key in catalog_keys:
-                    continue
-                identity = json.dumps([journey["id"], *key], ensure_ascii=False)
-                temporary[key] = {
-                    "id": f"temporary-{uuid5(NAMESPACE_URL, identity).hex}",
-                    "name": line["name"],
-                    "category": line["category"],
-                    "subcategory": line["subcategory"],
-                    "unit_price": line["unit_price"],
-                    "temporary": True,
-                }
-        return list(temporary.values())
-
-    def get_last_export(self, expected_id: str | None = None) -> tuple[str, bytes]:
+    def get_last_export(self, expected_id: str | None = None, close_id: str | None = None) -> tuple[str, bytes]:
         with self.lock:
+            self._ensure_storage()
             if self.last_export is None:
                 raise DomainError("Todavía no hay una jornada exportada.", 404)
             if expected_id is not None and self.last_export[0] != expected_id:
                 raise DomainError("La exportación de esta jornada ya no está disponible.", 404)
+            if close_id is not None and close_id != self._export_close_id:
+                raise DomainError("Los archivos de este cierre ya no están disponibles.", 404)
             return self.last_export
 
+    @mutating
     def create_journey(self, title: str) -> dict:
         with self.lock:
             if self.journey is not None:
                 raise DomainError("Cierre o descarte la jornada activa antes de abrir otra.", 409)
-            title = title.strip()
+            title = business_text(title, "Nombre de jornada")
             if not title:
                 raise DomainError("El nombre de la jornada es obligatorio.")
             self.journey = {
@@ -260,19 +385,21 @@ class Store:
             self._event("journey_created", title)
             return deepcopy(self.journey)
 
+    @mutating
     def rename_journey(self, title: str, expected_id: str | None = None) -> dict:
         with self.lock:
             journey = self._active(expected_id)
-            title = title.strip()
+            title = business_text(title, "Nombre de jornada")
             if not title:
                 raise DomainError("El nombre de la jornada es obligatorio.")
             journey["title"] = title
             self._event("journey_renamed", title)
             return deepcopy(self.journey)
 
+    @mutating
     def add_author(self, name: str) -> dict:
         with self.lock:
-            name = name.strip()
+            name = business_text(name, "Nombre del autor")
             if not name:
                 raise DomainError("El nombre del autor es obligatorio.")
             j = self._active()
@@ -283,11 +410,12 @@ class Store:
             self._event("author_created", name)
             return deepcopy(item)
 
+    @mutating
     def rename_author(self, author_id: str, name: str) -> dict:
         with self.lock:
             j = self._active()
             item = self._find(j["authors"], author_id, "Autor")
-            name = name.strip()
+            name = business_text(name, "Nombre del autor")
             if not name or any(a["id"] != author_id and a["name"].casefold() == name.casefold()
                                for a in j["authors"]):
                 raise DomainError("Nombre de autor vacío o duplicado.")
@@ -295,6 +423,7 @@ class Store:
             self._event("author_updated", name)
             return deepcopy(item)
 
+    @mutating
     def delete_author(self, author_id: str) -> None:
         with self.lock:
             j = self._active()
@@ -305,6 +434,7 @@ class Store:
             j["authors"].remove(item)
             self._event("author_deleted", item["name"])
 
+    @mutating
     def add_article(self, data: dict) -> dict:
         with self.lock:
             journey = self._active()
@@ -313,7 +443,6 @@ class Store:
             inventory = deepcopy(self.inventory)
             inventory["articles"].append(item)
             self._register_taxonomy(inventory, item)
-            self._write_inventory(inventory)
             self.inventory = inventory
             journey["articles"].append(item)
             self._new_catalog_articles[item["id"]] = {
@@ -326,7 +455,8 @@ class Store:
     @staticmethod
     def _article_data(data: dict, allow_empty_price: bool = False) -> dict:
         values = {
-            key: str(data.get(key) or "").strip()
+            key: business_text(data.get(key) or "", key,
+                               200 if key == "name" else MAX_TAXONOMY)
             for key in ("name", "category", "subcategory")
         }
         if not all(values.values()):
@@ -365,19 +495,22 @@ class Store:
             inventory["subcategories"].append(subcategory)
         article["subcategory"] = subcategory["name"]
 
+    @mutating
     def update_article(self, article_id: str, data: dict) -> dict:
         with self.lock:
             journey = self._active()
-            item = self._find(journey["articles"], article_id, "Artículo")
+            item = self._find(self.inventory["articles"], article_id, "Artículo")
             updated = self._article_data(data, allow_empty_price=True)
             previous_price = item["unit_price"]
             inventory = deepcopy(self.inventory)
             stored = self._find(inventory["articles"], article_id, "Artículo")
             self._register_taxonomy(inventory, updated)
             stored.update(updated)
-            self._write_inventory(inventory)
             self.inventory = inventory
             item.update(updated)
+            for current in journey["articles"]:
+                if current["id"] == article_id:
+                    current.update(updated)
             self._journey_catalog_keys.add(article_identity(item))
             if article_id in self._new_catalog_articles:
                 self._new_catalog_articles[article_id].update(deepcopy(item))
@@ -391,41 +524,70 @@ class Store:
             self._event("article_updated", item["name"])
             return deepcopy(item)
 
+    @mutating
     def delete_article(self, article_id: str) -> None:
         with self.lock:
             j = self._active()
-            item = self._find(j["articles"], article_id, "Artículo")
+            item = self._find(self.inventory["articles"], article_id, "Artículo")
             inventory = deepcopy(self.inventory)
             stored = self._find(inventory["articles"], article_id, "Artículo")
             inventory["articles"].remove(stored)
-            self._write_inventory(inventory)
             self.inventory = inventory
-            j["articles"].remove(item)
+            j["articles"] = [a for a in j["articles"] if a["id"] != article_id]
             if article_id in self._new_catalog_articles:
                 self._new_catalog_articles[article_id]["deleted"] = True
             self._event("article_deleted", item["name"])
 
-    def _lines(self, lines: list[dict], not_billed: bool = False) -> list[dict]:
+    def _lines(self, lines: list[dict], not_billed: bool = False, previous: list[dict] | None = None) -> list[dict]:
         if not lines:
             raise DomainError("La orden necesita al menos un artículo.")
         if len(lines) > 50:
             raise DomainError("La orden admite hasta 50 líneas.")
         output = []
         available = None
-        for row in lines:
+        saved_by_id = {line["line_id"]: line for line in previous or []}
+        requested_ids = [row["line_id"] for row in lines if row.get("line_id")]
+        if len(requested_ids) != len(set(requested_ids)):
+            raise DomainError("Identificador de línea repetido.")
+        if any(identifier not in saved_by_id for identifier in requested_ids):
+            raise DomainError("La línea no pertenece a esta orden.", 409)
+        used_ids = set()
+        catalog_counts = Counter(row.get("catalog_id") for row in lines)
+        # Una referencia única permite reconocer una línea desplazada sin ambigüedad.
+        unique_saved = {}
+        for line in previous or []:
+            catalog_id = line.get("catalog_id")
+            if catalog_id:
+                unique_saved[catalog_id] = None if catalog_id in unique_saved else line
+        for index, row in enumerate(lines):
             quantity = bounded_integer(
                 row.get("quantity"), 1, "La cantidad debe ser un entero positivo.",
             )
+            identified = saved_by_id.get(row.get("line_id"))
             if row.get("catalog_id"):
                 if available is None:
                     available = {item["id"]: item for item in self.get_available_articles()}
-                article = available.get(row["catalog_id"])
+                old = previous[index] if previous and index < len(previous) else None
+                saved_line = old if old and old.get("catalog_id") == row["catalog_id"] else None
+                if identified is not None:
+                    saved_line = identified if identified.get("catalog_id") == row["catalog_id"] else None
+                if not row.get("line_id") and saved_line is None and catalog_counts[row["catalog_id"]] == 1:
+                    saved_line = unique_saved.get(row["catalog_id"])
+                if saved_line and not row.get("line_id") and (
+                    saved_line["line_id"] in requested_ids or saved_line["line_id"] in used_ids
+                ):
+                    saved_line = None
+                article = available.get(row["catalog_id"]) or saved_line
                 if article is None:
                     raise DomainError("Artículo no encontrado.", 404)
                 data = {
                     key: article[key]
                     for key in ("name", "category", "subcategory", "unit_price")
                 }
+                if saved_line:
+                    data = {key: saved_line[key] for key in ("name", "category", "subcategory", "unit_price")}
+                    if row.get("unit_price") not in (None, ""):
+                        data["unit_price"] = row["unit_price"]
                 if not_billed:
                     data["unit_price"] = None
                 elif data["unit_price"] is None:
@@ -440,16 +602,28 @@ class Store:
                     {**row, "unit_price": None} if not_billed else row,
                     allow_empty_price=not_billed,
                 )
+            positional = previous[index] if previous and index < len(previous) else None
+            matched = identified or (saved_line if row.get("catalog_id") else (
+                positional if positional and not positional.get("catalog_id") else None
+            ))
+            identifier = matched["line_id"] if matched else str(uuid4())
+            if identifier in used_ids or (not row.get("line_id") and identifier in requested_ids):
+                identifier = str(uuid4())
+            used_ids.add(identifier)
             output.append({
+                "line_id": identifier,
                 **data,
+                **({"catalog_id": row["catalog_id"]} if row.get("catalog_id") else {}),
                 "quantity": quantity,
                 "subtotal": None if not_billed else quantity * data["unit_price"],
             })
         return output
 
+    @mutating
     def save_order(
         self, author_id: str, lines: list[dict], order_id: str | None = None,
-        status: str = "sale",
+        status: str = "sale", *, series: str | None = None,
+        serial_number: object = None,
     ) -> dict:
         with self.lock:
             j = self._active()
@@ -459,7 +633,35 @@ class Store:
             existing_order = (
                 self._find(j["orders"], order_id, "Orden") if order_id else None
             )
-            normalized = self._lines(lines, not_billed=status == "not_billed")
+            serial = None
+            if series is not None or serial_number is not None:
+                try:
+                    serial = validate_serial(series, serial_number)
+                except ValueError as error:
+                    raise DomainError(str(error)) from None
+            previous = None
+            if existing_order:
+                previous = [
+                    {**line, "line_id": line_identifier(existing_order["id"], index, line)}
+                    for index, line in enumerate(existing_order["lines"])
+                ]
+            normalized = self._lines(lines, not_billed=status == "not_billed", previous=previous)
+            historical_keys = {
+                article_identity(old) for old in existing_order["lines"]
+            } if existing_order else set()
+            catalog_keys = {article_identity(article) for article in self.inventory["articles"]}
+            for row in normalized:
+                key = article_identity(row)
+                if key in historical_keys or key in catalog_keys:
+                    continue
+                article = {key: row[key] for key in ("name", "category", "subcategory", "unit_price")}
+                article["id"] = str(uuid4())
+                self._register_taxonomy(self.inventory, article)
+                self.inventory["articles"].append(article)
+                j["articles"].append(deepcopy(article))
+                self._new_catalog_articles[article["id"]] = {**deepcopy(article), "temporary": False, "deleted": False}
+                catalog_keys.add(key)
+                self._journey_catalog_keys.add(key)
             total = None if status == "not_billed" else sum(row["subtotal"] for row in normalized)
             if existing_order:
                 order = existing_order
@@ -484,6 +686,8 @@ class Store:
                 j["next_order"] += 1
                 j["orders"].append(order)
                 action = "order_created"
+            if serial is not None:
+                order.update(series=serial[0], serial_number=serial[1])
             if status == "not_billed":
                 articles = ", ".join(
                     f'{line["name"]} × {line["quantity"]}' for line in normalized
@@ -491,76 +695,40 @@ class Store:
                 self._event(
                     "order_not_billed",
                     f'Orden #{order["number"]} · ID {order["id"]} · '
-                    f'No facturada (regalo/cancelada), sin importe · {articles}',
+                    + (f'Serie {order["series"]} · {order["serial_number"]:03d} · ' if order.get("series") else "")
+                    + f'No facturada (regalo/cancelada), sin importe · {articles}',
                 )
             else:
-                self._event(action, f'Orden {order["number"]}')
+                self._event(action, f'Orden {order["number"]}' +
+                            (f' · Serie {order["series"]} · {order["serial_number"]:03d}' if serial else ""))
             return deepcopy(order)
 
+    @mutating
     def delete_order(self, order_id: str) -> None:
         with self.lock:
             j = self._active()
             order = self._find(j["orders"], order_id, "Orden")
             j["orders"].remove(order)
-            self._event("order_deleted", f'Orden {order["number"]}')
+            self._event("order_deleted", f'Orden {order["number"]}' +
+                        (f' · Serie {order["series"]} · {order["serial_number"]:03d}' if order.get("series") else ""))
 
     def get_summary(self) -> dict:
         with self.lock:
             return summary(self._active())
 
-    @staticmethod
-    def _write_json(path: Path, data: dict, prefix: str) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = None
-        try:
-            with NamedTemporaryFile(
-                "w",
-                encoding="utf-8",
-                dir=path.parent,
-                prefix=prefix,
-                suffix=".tmp",
-                delete=False,
-            ) as stream:
-                temporary = Path(stream.name)
-                json.dump(data, stream, ensure_ascii=False, indent=2)
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(temporary, path)
-        finally:
-            if temporary and temporary.exists():
-                temporary.unlink()
-
-    def _write_globals(self, data: dict) -> None:
-        try:
-            self._write_json(self.global_file, data, ".globals-")
-        except OSError as error:
-            raise DomainError(
-                "No se pudo guardar el cierre. La jornada sigue activa y sus datos "
-                "se conservan. Puede reintentar cuando se restablezca el almacenamiento.",
-                503,
-            ) from error
-
-    def _write_inventory(self, data: dict) -> None:
-        try:
-            self._write_json(self.inventory_file, data, ".inventory-")
-        except OSError as error:
-            raise DomainError(
-                "No se pudo guardar el catálogo. No se aplicaron los cambios. "
-                "Puede reintentar cuando se restablezca el almacenamiento.",
-                503,
-            ) from error
-
+    @mutating
     def close_journey(self, expected_id: str | None = None) -> bytes:
         with self.lock:
             j = self._active(expected_id)
             stats = summary(j)
-            new_articles = list(self._new_catalog_articles.values()) + [
-                {**article, "deleted": False}
-                for article in self._temporary_articles(j)
-                if article_identity(article) not in self._journey_catalog_keys
-            ]
-            export = build_export(j, stats, new_articles, self._price_changes, now())
-            payload = json.dumps(export, ensure_ascii=False, indent=2).encode("utf-8")
+            new_articles = list(self._new_catalog_articles.values())
+            try:
+                export = build_export(j, stats, new_articles, self._price_changes, now())
+                payload = json.dumps(export, ensure_ascii=False, indent=2).encode("utf-8")
+            except Exception as error:
+                self.runtime_log.record(logging.ERROR, "Falló la generación de la exportación de cierre.",
+                                        "export_failed", error=error, journey_id=j["id"], format="json")
+                raise
             next_globals = deepcopy(self.globals)
             if j["id"] not in next_globals["closed_ids"]:
                 next_globals["closed_ids"].append(j["id"])
@@ -572,13 +740,18 @@ class Store:
                         entry = next_globals[group].setdefault(key, {"units": 0, "revenue": 0})
                         for metric in ("units", "revenue"):
                             entry[metric] += value[metric]
-            self._write_globals(next_globals)
+            close_id = uuid4().hex
+            self.rollback = {"close_id": close_id, "journey": self._journey_state(),
+                             "globals_before": deepcopy(self.globals)}
+            self._event("journey_closed", j["title"], journey_event=False)
+            self._export_close_id = close_id
             self.globals = next_globals
             self.last_export = (j["id"], payload)
             self.journey = None
             self._clear_article_activity()
             return payload
 
+    @mutating
     def discard_journey(self, expected_id: str | None = None) -> None:
         with self.lock:
             title = self._active(expected_id)["title"]

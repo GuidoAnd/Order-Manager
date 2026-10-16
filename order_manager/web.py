@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import replace
+from functools import wraps
 from hashlib import sha256
 from html import escape
 from pathlib import Path
@@ -11,9 +12,14 @@ import json
 import re
 from urllib.parse import urlencode
 
+from .templating import component, render
+from .order_lines import line_identifier
+from .order_series import serial_label
+
 from . import journey_results, table_pages
 from .article_search import ArticleSearch, article_identity, searchable
 from .store import DomainError, Store, is_sale, summary
+from .security import protect_forms
 
 
 STYLESHEET = Path(__file__).resolve().parent.parent / "static" / "styles.css"
@@ -38,30 +44,26 @@ def article_statistics_name(key: str) -> str:
     return re.sub(r"\\([\\/])", r"\1", key.split(" / ")[-1])
 
 
-def download_form(journey_id: str) -> str:
+def download_form(journey_id: str, close_id: str | None = None) -> str:
     options = (
         ("csv_summary", "CSV resumen", "Cantidades por categoría, con artículos en columnas."),
         ("csv_detail", "CSV detallado", "Una fila por artículo con unidades e importe."),
         ("json", "JSON completo", "Órdenes, registros y datos de la jornada."),
         ("zip", "Todo en ZIP", "Los dos CSV y el JSON en una sola descarga."),
     )
+    close_field = f'<input type="hidden" name="close_id" value="{h(close_id)}">' if close_id else ""
     radios = "".join(
         f'<input type="radio" name="format" id="export-{value}" value="{value}"'
         + (' checked' if value == "zip" else '') + '>'
         + f'<label for="export-{value}"><strong>{label}</strong><span>{description}</span></label>'
         for value, label, description in options
     )
-    return f"""<form class="export-form" method="get" action="/api/exports/last">
-        <input type="hidden" name="journey_id" value="{h(journey_id)}">
-        <fieldset>
-            <legend>Elegir archivo para descargar</legend>
-            <div class="export-options">{radios}</div>
-        </fieldset>
-        <div class="actions">
-            <button type="submit">Descargar</button>
-            <a class="button quiet" href="/">Volver al Dashboard</a>
-        </div>
-    </form>"""
+    return render(
+        'web/download_form.html',
+        journey_id=journey_id,
+        close_field=close_field,
+        radios=radios,
+    )
 
 
 def stylesheet_url() -> str:
@@ -71,6 +73,7 @@ def stylesheet_url() -> str:
 
 
 def layout(title: str, content: str, head: str = "") -> str:
+    content = protect_forms(content)
     sections = (
         ("/", "Dashboard"),
         ("/jornada", "Jornada"),
@@ -78,40 +81,18 @@ def layout(title: str, content: str, head: str = "") -> str:
         ("/articulos", "Artículos"),
         ("/registros", "Registros"),
     )
-    links = "\n".join(
-        f'<a href="{path}">{label}</a>' for path, label in sections
+    return render(
+        'web/layout.html',
+        title=title,
+        stylesheet_url=stylesheet_url(),
+        head=head,
+        sections=sections,
+        content=content,
     )
-    return f"""<!doctype html>
-<html lang="es">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{h(title)} · Order Manager</title>
-    <link rel="stylesheet" href="{h(stylesheet_url())}">
-    {head}
-</head>
-<body>
-    <header class="top">
-        <a class="brand" href="/">Order Manager <small>v0.2 en desarrollo</small></a>
-        <nav class="desktop-navigation" aria-label="Secciones">{links}</nav>
-        <details class="mobile-navigation">
-            <summary class="button quiet">Menú</summary>
-            <nav aria-label="Secciones">{links}</nav>
-        </details>
-    </header>
-    <main>
-        <h1>{h(title)}</h1>
-        {content}
-    </main>
-    <footer>Order Manager · v0.2 en desarrollo</footer>
-</body>
-</html>"""
 
 
 def alert(message: str) -> str:
-    if not message:
-        return ""
-    return f'<p class="alert" role="alert">{h(message)}</p>'
+    return component("alert", message)
 
 
 def metrics(data: dict, include_journeys: bool = False) -> str:
@@ -125,14 +106,7 @@ def metrics(data: dict, include_journeys: bool = False) -> str:
             ("Importe", data["revenue"]),
         ]
     )
-    cards = "\n".join(
-        f"""<div class="metric">
-            <strong>{h(value)}</strong>
-            <span>{h(label)}</span>
-        </div>"""
-        for label, value in pairs
-    )
-    return f'<div class="metrics">{cards}</div>'
+    return component("metrics", pairs)
 
 
 def dashboard(store: Store) -> str:
@@ -161,38 +135,23 @@ def dashboard(store: Store) -> str:
     if not categories:
         categories = "<li>Sin ventas cerradas.</li>"
 
-    body = f"""<section class="panel">
-        <h2>Jornada</h2>
-        {active}
-    </section>
-    <section class="panel">
-        <h2>Resultados por autor</h2>
-        {authors}
-    </section>
-    <section class="panel">
-        <h2>Acumulado global</h2>
-        {metrics(globals_, True)}
-        <h3>Ventas por categoría</h3>
-        <ul>{categories}</ul>
-    </section>"""
+    body = render(
+        'web/dashboard.html',
+        active=active,
+        authors=authors,
+        metrics_globals__True=metrics(globals_, True),
+        categories=categories,
+    )
     return layout("Dashboard", body)
 
 
 def _author_row(author: dict, values: dict) -> str:
     name = values.get("name", "") if values.get("author_id") == author["id"] else author["name"]
-    return f"""<li class="author-item">
-        <form method="post" action="/ui/journey">
-            <input type="hidden" name="author_id" value="{h(author['id'])}">
-            <label>Nombre del autor
-                <input name="name" value="{h(name)}" required autocomplete="off">
-            </label>
-            <div class="actions">
-                <button name="action" value="rename_author">Guardar nombre</button>
-                <button class="danger" name="action" value="delete_author"
-                        formnovalidate>Eliminar</button>
-            </div>
-        </form>
-    </li>"""
+    return render(
+        'web/author_row.html',
+        author_id=author['id'],
+        name=name,
+    )
 
 
 def journey_article_pages(values: dict) -> dict[str, int]:
@@ -202,12 +161,13 @@ def journey_article_pages(values: dict) -> dict[str, int]:
 def _author_results(author: dict, orders: list[dict], stats: dict, pages: dict) -> str:
     average = f"{stats['average']:.2f}"
     tables = journey_results.author_tables(author, orders, stats, pages, article_statistics_name)
-    return f"""<div class="author-summary">
-        <h3>{h(author['name'])}</h3>
-        {metrics(stats)}
-        <p>Promedio por orden: {h(average)}</p>
-        {tables}
-    </div>"""
+    return render(
+        'web/author_results.html',
+        author_name=author['name'],
+        metrics_stats=metrics(stats),
+        average=average,
+        tables=tables,
+    )
 
 
 def journey_page(
@@ -216,21 +176,14 @@ def journey_page(
     article_pages: dict[str, int] | None = None,
     order_pages: dict[str, int] | None = None,
     subtotal_pages: dict[str, int] | None = None,
+    navigation=None,
 ) -> str:
     journey = store.get_journey()
     if not journey:
-        body = """<section class="panel">
-            <h2>Abrir jornada</h2>
-            <form method="post" action="/ui/journey">
-                <input type="hidden" name="action" value="create">
-                <label>Nombre de la jornada
-                    <input name="title" required maxlength="120"
-                           placeholder="Jornada de hoy">
-                </label>
-                <button type="submit">Crear jornada</button>
-            </form>
-        </section>"""
-        return layout("Jornada", alert(error) + body)
+        body = render(
+            'web/journey_open.html',
+        )
+        return layout("Jornada", alert(error) + body + recovery_button(store))
 
     author_values = author_values or {}
     author_action = author_values.get("action")
@@ -249,6 +202,8 @@ def journey_page(
         {"articles": article_pages or {}, "orders": order_pages or {},
          "subtotals": subtotal_pages or {}},
     )
+    if navigation is not None:
+        pages = journey_results.NavigationPages(pages, navigation, journey["id"])
     author_results = "\n".join(
         _author_results(
             author,
@@ -265,65 +220,21 @@ def journey_page(
 
     editor_open = " open" if rename_title is not None else ""
     title_value = journey["title"] if rename_title is None else rename_title
-    body = f"""<section class="panel">
-        <details class="journey-name-editor"{editor_open}>
-            <summary aria-label="Editar nombre">
-                <h2>{h(journey['title'])}</h2>
-                <span class="button quiet">Editar nombre</span>
-            </summary>
-            <form method="post" action="/ui/journey">
-                <input type="hidden" name="journey_id" value="{h(journey['id'])}">
-                <label>Nombre de la jornada
-                    <input name="title" value="{h(title_value)}" required maxlength="120">
-                </label>
-                <div class="actions">
-                    <button name="action" value="rename">Guardar</button>
-                    <a class="button quiet" href="/jornada">Cancelar</a>
-                </div>
-            </form>
-        </details>
-        <p>Abierta: {h(journey['opened_at'])}</p>
-    </section>
-    <section class="panel">
-        <h2>Autores</h2>
-        <div class="authors-layout">
-            <details class="author-add author-disclosure"{add_open}>
-                <summary class="button add-article">Agregar autor</summary>
-                <form method="post" action="/ui/journey">
-                    <label>Nombre del autor
-                        <input name="name" value="{h(add_name)}" required autocomplete="off">
-                    </label>
-                    <div class="actions">
-                        <button name="action" value="add_author">Guardar autor</button>
-                        <a class="button quiet" href="/jornada">Cancelar</a>
-                    </div>
-                </form>
-            </details>
-            <div class="authors-registered">
-                <h3>Autores dados de alta</h3>
-                <ul class="list author-names">{author_names}</ul>
-                <details class="author-editor author-disclosure"{edit_open}>
-                    <summary class="button quiet">Editar autores</summary>
-                    <ul class="list">{authors}</ul>
-                    <a class="button quiet" href="/jornada">Cancelar</a>
-                </details>
-            </div>
-        </div>
-    </section>
-    <section class="panel">
-        <h2>Resultados por autor</h2>
-        {author_results}
-    </section>
-    <section class="panel">
-        <h2>Finalizar jornada</h2>
-        <div class="actions journey-final-actions">
-            <a class="button" href="/confirmar/close">Cerrar y contabilizar ventas</a>
-            <a class="button danger" href="/confirmar/discard">
-                Descartar jornada sin contabilizar ventas
-            </a>
-        </div>
-    </section>"""
-    return layout("Jornada", alert(error) + body, journey_results.responsive_styles())
+    body = render(
+        'web/journey_active.html',
+        editor_open=editor_open,
+        journey_title=journey['title'],
+        journey_id=journey['id'],
+        title_value=title_value,
+        journey_opened_at=journey['opened_at'],
+        add_open=add_open,
+        add_name=add_name,
+        author_names=author_names,
+        edit_open=edit_open,
+        authors=authors,
+        author_results=author_results,
+    )
+    return layout("Jornada", alert(error) + body + recovery_button(store), journey_results.responsive_styles())
 
 
 def _catalog_option(article: dict, selected_id: str) -> str:
@@ -381,35 +292,32 @@ def _taxonomy_fields(index: int | str, row: dict, inventory: dict) -> str:
                 f'<option value="{h(subcategory["name"])}"{checked}>'
                 f'{h(subcategory["name"])}</option>'
             )
-        subcategory_fields.append(f"""<label class="subcategory-choice subcategory-{position}">
-            Subcategoría
-            <select name="subcategory_{index}_{position}">
-                <option value="">Seleccionar subcategoría</option>
-                {''.join(options)}
-            </select>
-        </label>""")
-    return f"""<label>Categoría
-        <select class="category-select" name="category_{index}">
-            <option value="">Seleccionar categoría</option>
-            {''.join(category_options)}
-        </select>
-    </label>
-    {''.join(subcategory_fields)}"""
+        subcategory_fields.append(render(
+            'web/taxonomy_fields.html',
+            position=position,
+            index=index,
+            position_2=position,
+            join_options=''.join(options),
+        ))
+    return render(
+        'web/taxonomy_fields_2.html',
+        index=index,
+        join_category_options=''.join(category_options),
+        join_subcategory_fields=''.join(subcategory_fields),
+    )
 
 
 def _new_article_fields(index: int, row: dict, inventory: dict) -> str:
     price = row.get("new_unit_price", row.get("unit_price", "") if row.get("name") else "")
     price = "" if price is None else price
-    return f"""<div class="new-article-fields taxonomy-fields">
-        <label>Nombre
-            <input name="name_{index}" value="{h(row.get('name', ''))}">
-        </label>
-        {_taxonomy_fields(index, row, inventory)}
-        <label class="line-price">Precio unitario del producto nuevo
-            <input name="new_unit_price_{index}" type="number" min="0" step="1"
-                   value="{h(price)}">
-        </label>
-    </div>"""
+    return render(
+        'web/new_article_fields.html',
+        index=index,
+        row_get_name=row.get('name', ''),
+        taxonomy_fields_index_row_inventory=_taxonomy_fields(index, row, inventory),
+        index_2=index,
+        price=price,
+    )
 
 
 def _subcategory_styles(inventory: dict) -> str:
@@ -418,52 +326,50 @@ def _subcategory_styles(inventory: dict) -> str:
         f'.subcategory-{position} {{ display: block; }}'
         for position in range(len(inventory["categories"]))
     )
-    return f"<style>\n{rules}\n</style>"
+    return render(
+        'web/subcategory_styles.html',
+        rules=rules,
+    )
 
 
 def _order_line(index: int, row: dict, catalog: list[dict], inventory: dict) -> str:
     def value(key: str) -> str:
         return h(row.get(key) if row.get(key) is not None else "")
 
-    catalog_options = _catalog_options(catalog, row.get("catalog_id", ""))
+    selected_id = row.get("catalog_id", "")
+    if selected_id and row.get("line_id") and row.get("name") and not any(
+        article["id"] == selected_id for article in catalog
+    ):
+        catalog = [*catalog, {**row, "id": selected_id}]
+    catalog_options = _catalog_options(catalog, selected_id)
     quantity = value("quantity") or "1"
-    source = row.get("source", "new" if row.get("name") else "inventory")
+    source = row.get("source", "inventory" if selected_id else (
+        "new" if row.get("name") else "inventory"
+    ))
     inventory_checked = " checked" if source == "inventory" else ""
     new_checked = " checked" if source == "new" else ""
     inventory_price = value("unit_price") if source == "inventory" or "source" in row else ""
-    return f"""<fieldset class="order-line">
-        <legend>Artículo {index + 1}</legend>
-        <label>Cantidad
-            <input name="quantity_{index}" type="number" min="1" step="1"
-                   value="{quantity}" required>
-        </label>
-        <div class="article-source">
-            <input id="inventory_{index}" name="source_{index}" type="radio"
-                   value="inventory"{inventory_checked}>
-            <label for="inventory_{index}">Del inventario</label>
-            <input id="new_{index}" name="source_{index}" type="radio"
-                   value="new"{new_checked}>
-            <label for="new_{index}">Nuevo producto</label>
-            <div class="inventory-fields">
-                <label>Elegir del inventario
-                    <select name="catalog_id_{index}">
-                        <option value="">Seleccionar artículo</option>
-                        {catalog_options}
-                    </select>
-                </label>
-                <label class="line-price">Precio unitario si falta en el inventario
-                    <input name="unit_price_{index}" type="number" min="0" step="1"
-                           value="{inventory_price}">
-                </label>
-            </div>
-            {_new_article_fields(index, row, inventory)}
-        </div>
-        <div class="order-line-actions">
-            <button class="danger order-secondary" name="action" value="remove_{index}">
-                Quitar artículo
-            </button>
-        </div>
-    </fieldset>"""
+    return render(
+        'web/order_line.html',
+        line_id=row.get("line_id") or "",
+        index_1=index + 1,
+        index=index,
+        quantity=quantity,
+        index_2=index,
+        index_3=index,
+        inventory_checked=inventory_checked,
+        index_4=index,
+        index_5=index,
+        index_6=index,
+        new_checked=new_checked,
+        index_7=index,
+        index_8=index,
+        catalog_options=catalog_options,
+        index_9=index,
+        inventory_price=inventory_price,
+        new_article_fields_index_row_inventory=_new_article_fields(index, row, inventory),
+        index_10=index,
+    )
 
 
 def _order_row(
@@ -476,37 +382,30 @@ def _order_row(
     author_name = authors.get(order["author_id"], "—")
     status_label = "" if is_sale(order) else '<span class="order-state">No facturada (regalo/cancelada)</span>'
     total = h(order["total"]) if is_sale(order) else "Sin importe"
-    return f"""<tr>
-        <td data-label="Número">#{h(order['number'])}{status_label}</td>
-        <td data-label="Autor">{h(author_name)}</td>
-        <td data-label="Artículos">{h(details)}</td>
-        <td data-label="Total">{total}</td>
-        <td data-label="Acciones">
-            <details class="order-actions-menu">
-                <summary class="button quiet" aria-label="Acciones de la orden {h(order['number'])}">Acciones</summary>
-                <div class="row-actions">
-                    <form method="get" action="/ordenes#order-editor">
-                        {_order_list_fields(page, article_id, query)}
-                        <input type="hidden" name="edit" value="{h(order['id'])}">
-                        <button type="submit">Editar</button>
-                    </form>
-                    <form method="post" action="/ui/orders/delete">
-                        {_order_list_fields(page, article_id, query)}
-                        <input type="hidden" name="order_id" value="{h(order['id'])}">
-                        <button class="danger" type="submit">Eliminar</button>
-                    </form>
-                </div>
-            </details>
-        </td>
-    </tr>"""
+    return render(
+        'web/order_row.html',
+        editor_url=order_editor_url(order['id'], page, article_id, query),
+        serial_label=serial_label(order),
+        order_number=order['number'],
+        status_label=status_label,
+        author_name=author_name,
+        details=details,
+        total=total,
+        order_number_2=order['number'],
+        order_list_fields_page_article_id_query=_order_list_fields(page, article_id, query),
+        order_id=order['id'],
+        order_list_fields_page_article_id_query_2=_order_list_fields(page, article_id, query),
+        order_id_2=order['id'],
+    )
 
 
 def _order_list_fields(page: int, article_id: str, query: str) -> str:
-    return (
-        f'<input type="hidden" name="page" value="{h(page)}">'
-        f'<input type="hidden" name="article" value="{h(article_id)}">'
-        f'<input type="hidden" name="q" value="{h(query)}">'
-    )
+    return component("hidden_fields", {"page": page, "article": article_id, "q": query})
+
+
+def order_editor_url(edit_id: str = "", page: int = 1, article_id: str = "", query: str = "") -> str:
+    path = f"/ordenes/{edit_id}/editar" if edit_id else "/ordenes/nueva"
+    return path + "?" + urlencode({"page": page, "article": article_id, "q": query})
 
 
 def orders_url(page: int = 1, article_id: str = "", query: str = "") -> str:
@@ -555,18 +454,11 @@ def _order_results(
         rows = "\n".join(
             _order_row(order, names, page, article_id, query) for order in author_orders
         )
-        sections.append(f"""<div class="author-summary">
-            <h3>{h(author['name'])}</h3>
-            <div class="table-wrap responsive-table">
-                <table>
-                    <thead><tr>
-                        <th>Número</th><th>Autor</th><th>Artículos</th>
-                        <th>Total</th><th>Acciones</th>
-                    </tr></thead>
-                    <tbody>{rows}</tbody>
-                </table>
-            </div>
-        </div>""")
+        sections.append(render(
+            'web/order_results.html',
+            author_name=author['name'],
+            rows=rows,
+        ))
     content = "\n".join(sections) or (
         "<p>No hay órdenes que coincidan con la búsqueda.</p>" if query.strip()
         else "<p>No hay órdenes que usen este artículo.</p>" if article_id
@@ -582,47 +474,23 @@ def _order_results(
             f'<a class="button quiet" href="{h(orders_url(page + 1, article_id, query))}#order-results">Siguiente</a>'
         )
     label = "orden" if total == 1 else "órdenes"
-    return f"""<div class="order-page-size order-page-{size}">
-        <p role="status">{total} {label} · Página {page} de {pages}</p>
-        {content}
-        <nav class="pagination" aria-label="Páginas de órdenes">{''.join(links)}</nav>
-    </div>"""
+    return render(
+        'web/order_results_2.html',
+        size=size,
+        total=total,
+        label=label,
+        page=page,
+        pages=pages,
+        content=content,
+        join_links=''.join(links),
+    )
 
 
 def _order_page_styles() -> str:
     """Mantiene una sola página visible, incluso con estilos externos antiguos."""
-    return """<style>
-        #order-results .order-page-size {
-            display: none;
-        }
-        #order-results .order-page-2 {
-            display: block;
-        }
-        @media (min-width: 375px) {
-            #order-results .order-page-2 {
-                display: none;
-            }
-            #order-results .order-page-3 {
-                display: block;
-            }
-        }
-        @media (min-width: 651px) {
-            #order-results .order-page-3 {
-                display: none;
-            }
-            #order-results .order-page-4 {
-                display: block;
-            }
-        }
-        @media (min-width: 1024px) {
-            #order-results .order-page-4 {
-                display: none;
-            }
-            #order-results .order-page-5 {
-                display: block;
-            }
-        }
-    </style>"""
+    return render(
+        'web/order_page_styles.html',
+    )
 
 
 def orders_page(
@@ -634,39 +502,63 @@ def orders_page(
     article_id: str = "",
     page: int = 1,
     query: str = "",
-    order_status: str | None = None,
+    order_status: str | None = None, *, editor: bool = False,
+    series: str | None = None, serial_number: object = None,
 ) -> str:
     journey = store.get_journey()
     if not journey:
         message = '<p>Primero <a href="/jornada">crea una jornada</a>.</p>'
         return layout("Órdenes", alert(error) + message)
 
+    editor = editor or rows is not None or bool(edit_id)
     selected_order = next(
         (order for order in journey["orders"] if order["id"] == edit_id),
         None,
     )
+    if edit_id and selected_order is None:
+        raise DomainError("Orden no encontrada.", 404)
+    if series is None:
+        series = selected_order.get("series", "") if selected_order else ""
+    if serial_number is None:
+        serial_number = selected_order.get("serial_number", "") if selected_order else ""
     if order_status is None:
         order_status = selected_order.get("status", "sale") if selected_order else "sale"
     sale_checked = " checked" if order_status == "sale" else ""
     not_billed_checked = " checked" if order_status == "not_billed" else ""
     if selected_order and rows is None:
-        rows = selected_order["lines"]
+        rows = [{**line, "line_id": line_identifier(selected_order["id"], index, line)}
+                for index, line in enumerate(selected_order["lines"])]
         author_id = selected_order["author_id"]
     if rows is None:
         rows = [{}]
 
-    author_options = "\n".join(
-        f'<option value="{h(author["id"])}"'
-        f'{" selected" if author["id"] == author_id else ""}>'
-        f'{h(author["name"])}</option>'
-        for author in journey["authors"]
-    )
+    if editor:
+        author_options = component("author_options", journey["authors"], author_id)
+        available_articles = store.get_available_articles()
+        inventory = store.get_order_inventory(selected_order["id"] if selected_order else "")
+        line_cards = "\n".join(
+            _order_line(index, row, available_articles, inventory)
+            for index, row in enumerate(rows)
+        )
+        form_title = "Editar orden" if selected_order else "Crear orden"
+        body = render(
+            'web/order_editor.html',
+            form_title=form_title,
+            list_fields=_order_list_fields(page, article_id, query),
+            line_count=len(rows),
+            edit_id=edit_id,
+            author_options=author_options,
+            sale_checked=sale_checked,
+            not_billed_checked=not_billed_checked,
+            line_cards=line_cards,
+            series=series,
+            serial_number=serial_number,
+            field_errors={key: error if error.startswith(label) else ""
+                          for key, label in (("series", "Serie:"), ("serial_number", "Numeración:"))},
+        )
+        return layout("Órdenes", alert(error) + body, _subcategory_styles(inventory))
+
     available_articles = store.get_available_articles()
-    inventory = store.get_order_inventory(selected_order["id"] if selected_order else "")
-    line_cards = "\n".join(
-        _order_line(index, row, available_articles, inventory)
-        for index, row in enumerate(rows)
-    )
     visible_orders = journey["orders"]
     filter_notice = ""
     if article_id:
@@ -697,7 +589,8 @@ def orders_page(
         visible_orders = [
             order for order in visible_orders
             if (
-                (number.isdecimal() and str(order["number"]) == number)
+                (number.isdecimal() and (str(order["number"]) == number
+                 or (not search_query.startswith("#") and order.get("serial_number") == int(number))))
                 or (not search_query.startswith("#")
                     and search_query in searchable(names.get(order["author_id"], "")))
             )
@@ -708,158 +601,57 @@ def orders_page(
         _order_results(visible_orders, journey["authors"], page, article_id, query, size)
         for size in sizes
     )
-    form_title = "Editar orden" if selected_order else "Crear orden"
-
-    body = f"""<section class="panel">
-        <h2>Órdenes por autor</h2>
-        {filter_notice}
-        <form class="order-search" method="get" action="/ordenes#order-results">
-            <input type="hidden" name="article" value="{h(article_id)}">
-            <label>Buscar por número o autor
-                <input type="search" name="q" value="{h(query)}"
-                       placeholder="90, #90 o nombre del autor">
-            </label>
-            <div class="actions">
-                <button type="submit">Buscar</button>
-                <a class="button quiet" href="{h(orders_url(article_id=article_id))}#order-results">
-                    Limpiar búsqueda
-                </a>
-            </div>
-        </form>
-        <div id="order-results">{grouped_orders}</div>
-    </section>
-    <section class="panel" id="order-editor">
-        <h2>{form_title}</h2>
-        <p>Selecciona artículos del inventario y agrega varias líneas, por ejemplo
-           Café × 3. Completa el precio cuando el artículo no lo tenga definido.
-           El total de una venta se calcula al guardar.</p>
-        <form class="order-form" method="post" action="/ui/orders/form" novalidate>
-            {_order_list_fields(page, article_id, query)}
-            <input type="hidden" name="count" value="{len(rows)}">
-            <input type="hidden" name="order_id" value="{h(edit_id)}">
-            <label>Autor
-                <select name="author_id" required>
-                    <option value="">Seleccionar autor</option>
-                    {author_options}
-                </select>
-            </label>
-            <fieldset class="order-status-choice">
-                <legend>Tipo de orden</legend>
-                <div class="order-status-options">
-                    <input id="order_sale" name="order_status" type="radio"
-                           value="sale"{sale_checked}>
-                    <label for="order_sale">Venta</label>
-                    <input id="order_not_billed" name="order_status" type="radio"
-                           value="not_billed"{not_billed_checked}>
-                    <label for="order_not_billed">No facturada (regalo/cancelada)</label>
-                </div>
-                <p class="not-billed-note">Conserva artículos y cantidades, sin importe.
-                   No suma ventas ni unidades a las estadísticas.</p>
-            </fieldset>
-            {line_cards}
-            <div class="actions order-actions">
-                <button class="add-article order-secondary" name="action" value="add">
-                    Agregar artículo
-                </button>
-                <button class="save-order" name="action" value="save">Guardar orden</button>
-            </div>
-        </form>
-    </section>"""
-    return layout(
-        "Órdenes", alert(error) + body,
-        _subcategory_styles(inventory) + (
-            """<style>
-                #order-results .order-page-5 {
-                    display: block;
-                }
-            </style>""" if search_query else _order_page_styles()
-        ),
+    body = render(
+        'web/orders_page.html',
+        filter_notice=filter_notice,
+        article_id=article_id,
+        query=query,
+        orders_url_article_id_article_id=orders_url(article_id=article_id),
+        grouped_orders=grouped_orders,
+        new_order_url=order_editor_url('', page, article_id, query),
     )
+    styles = render(
+        'web/order_search_styles.html',
+    ) if search_query else _order_page_styles()
+    return layout("Órdenes", alert(error) + body, styles)
 
 
 def _search_fields(search: ArticleSearch, *, post: bool = False, page: int | None = None) -> str:
-    return "\n".join(
-        f'<input type="hidden" name="{h(key)}" value="{h(value)}">'
-        for key, value in search.fields(post=post, page=page).items()
-    )
+    return component("hidden_fields", search.fields(post=post, page=page))
 
 
 def _article_row(article: dict, search: ArticleSearch, page: int) -> str:
     price = article["unit_price"]
     price_label = "Pendiente" if price is None else str(price)
-    return f"""<tr>
-        <td data-label="Nombre">{h(article['name'])}</td>
-        <td data-label="Categoría">{h(article['category'])}</td>
-        <td data-label="Subcategoría">{h(article['subcategory'])}</td>
-        <td data-label="Precio">{h(price_label)}</td>
-        <td data-label="Acciones">
-            <details class="article-actions">
-                <summary class="button quiet" aria-label="Acciones de {h(article['name'])}">Acciones</summary>
-                <div class="row-actions">
-                    <form method="get" action="/articulos#article-editor">
-                        {_search_fields(search, page=page)}
-                        <input type="hidden" name="edit" value="{h(article['id'])}">
-                        <button type="submit">Editar</button>
-                    </form>
-                    <form method="post" action="/ui/articles">
-                        {_search_fields(search, post=True, page=page)}
-                        <input type="hidden" name="article_id" value="{h(article['id'])}">
-                        <button class="danger" name="action" value="delete">Eliminar</button>
-                    </form>
-                </div>
-            </details>
-        </td>
-    </tr>"""
+    return render(
+        'web/article_row.html',
+        article_name=article['name'],
+        article_category=article['category'],
+        article_subcategory=article['subcategory'],
+        price_label=price_label,
+        article_name_2=article['name'],
+        search_fields_search_page_page=_search_fields(search, page=page),
+        article_id=article['id'],
+        search_fields_search_post_True_page_page=_search_fields(search, post=True, page=page),
+        article_id_2=article['id'],
+    )
 
 
 def _temporary_article_row(article: dict) -> str:
-    orders_url = "/ordenes?" + urlencode({"article": article["id"]})
-    return f"""<tr>
-        <td data-label="Nombre">{h(article['name'])}</td>
-        <td data-label="Categoría">{h(article['category'])}</td>
-        <td data-label="Subcategoría">{h(article['subcategory'])}</td>
-        <td data-label="Precio">{h(article['unit_price'])}</td>
-        <td data-label="Acciones">
-            <p>Temporal de esta jornada</p>
-            <a class="button" href="{h(orders_url)}">Ver órdenes que lo usan</a>
-        </td>
-    </tr>"""
+    return render(
+        'web/temporary_article_row.html',
+        article_name=article['name'],
+        article_category=article['category'],
+        article_subcategory=article['subcategory'],
+        article_unit_price=article['unit_price'],
+    )
 
 
 def _article_page_styles() -> str:
     """Entrega con el HTML las reglas que mantienen una sola lista visible."""
-    return """<style>
-        #available-articles .article-page-size {
-            display: none;
-        }
-        #available-articles .article-page-2 {
-            display: block;
-        }
-        @media (min-width: 375px) {
-            #available-articles .article-page-2 {
-                display: none;
-            }
-            #available-articles .article-page-3 {
-                display: block;
-            }
-        }
-        @media (min-width: 651px) {
-            #available-articles .article-page-3 {
-                display: none;
-            }
-            #available-articles .article-page-4 {
-                display: block;
-            }
-        }
-        @media (min-width: 1024px) {
-            #available-articles .article-page-4 {
-                display: none;
-            }
-            #available-articles .article-page-5 {
-                display: block;
-            }
-        }
-    </style>"""
+    return render(
+        'web/article_page_styles.html',
+    )
 
 
 def _article_results(matches: list[dict], search: ArticleSearch, page_size: int) -> str:
@@ -875,21 +667,19 @@ def _article_results(matches: list[dict], search: ArticleSearch, page_size: int)
     if page < pages:
         links.append(f'<a class="button quiet" href="{h(search.url(page=page + 1))}#article-results">Siguiente</a>')
     result_label = "resultado" if total == 1 else "resultados"
-    return f"""<div class="article-page-size article-page-{page_size}">
-        <p role="status">{total} {result_label} · Página {page} de {pages}</p>
-        <div class="table-wrap responsive-table">
-            <table>
-                <thead><tr><th>Nombre</th><th>Categoría</th><th>Subcategoría</th>
-                    <th>Precio</th><th>Acciones</th></tr></thead>
-                <tbody>{rows}</tbody>
-            </table>
-        </div>
-        <nav class="pagination" aria-label="Páginas de artículos">{''.join(links)}</nav>
-    </div>"""
+    return render(
+        'web/article_results.html',
+        page_size=page_size,
+        total=total,
+        result_label=result_label,
+        page=page,
+        pages=pages,
+        rows=rows,
+        join_links=''.join(links),
+    )
 
 
-def _article_browser(store: Store, search: ArticleSearch) -> str:
-    inventory = store.get_inventory()
+def _article_browser(inventory: dict, search: ArticleSearch) -> str:
     categories = "\n".join(
         f'<option value="{h(category["name"])}'
         f'"{" selected" if category["name"] == search.category else ""}>'
@@ -907,31 +697,18 @@ def _article_browser(store: Store, search: ArticleSearch) -> str:
             for item in inventory["subcategories"] if item["category_id"] == category["id"]
         )
         subcategories.append(f'<optgroup label="{h(category["name"])}">{options}</optgroup>')
-    available = store.get_available_articles()
-    matches = search.matching(available)
+    matches = search.matching(inventory["articles"])
     results = "\n".join(_article_results(matches, search, size) for size in (5, 4, 3, 2))
-    return f"""<form class="article-search" method="get" action="/articulos#article-results">
-        <input type="hidden" name="sold_page" value="{h(search.sold_page)}">
-        <label>Buscar por nombre
-            <input type="search" name="q" value="{h(search.query)}">
-        </label>
-        <details{' open' if search.category or search.subcategory else ''}>
-            <summary>Filtros de categoría y subcategoría</summary>
-            <label>Categoría
-                <select name="category"><option value="">Todas</option>{categories}</select>
-            </label>
-            <label>Subcategoría
-                <select name="subcategory"><option value="">Todas</option>
-                    {''.join(subcategories)}
-                </select>
-            </label>
-        </details>
-        <div class="actions">
-            <button type="submit">Buscar</button>
-            <a class="button quiet" href="{h(ArticleSearch(sold_page=search.sold_page).url())}#article-results">Limpiar búsqueda</a>
-        </div>
-    </form>
-    <div id="available-articles">{results}</div>"""
+    return render(
+        'web/article_browser.html',
+        search_sold_page=search.sold_page,
+        search_query=search.query,
+        open_if_search_category_or_search_subcategory_else=' open' if search.category or search.subcategory else '',
+        categories=categories,
+        join_subcategories=''.join(subcategories),
+        ArticleSearch_sold_page_search_sold_page_url=ArticleSearch(sold_page=search.sold_page).url(),
+        results=results,
+    )
 
 
 def _sold_article_row(item: tuple[str, dict]) -> str:
@@ -956,10 +733,13 @@ def articles_page(
         return layout("Artículos", alert(error) + message)
 
     search = search or ArticleSearch()
+    inventory = store.get_inventory()
     current = next(
-        (article for article in journey["articles"] if article["id"] == edit_id),
+        (article for article in inventory["articles"] if article["id"] == edit_id),
         {},
     )
+    if edit_id and not current:
+        raise DomainError("Artículo no encontrado.", 404)
     form_title = "Editar artículo" if current else "Agregar artículo"
     if values is not None:
         current = values
@@ -974,78 +754,78 @@ def articles_page(
         "Todavía no hay artículos vendidos.", "sold-articles",
     )
 
-    body = f"""<section class="panel">
-        <h2>Catálogo vendido de la jornada</h2>
-        <p>Unidades facturadas en las órdenes actuales, de mayor a menor.</p>
-        {sold_table}
-    </section>
-    <section class="panel" id="article-results">
-        <h2>Artículos disponibles para órdenes</h2>
-        <p>Los artículos guardados y los temporales de órdenes vigentes sirven
-           como referencia para nuevas órdenes.</p>
-        {_article_browser(store, search)}
-    </section>
-    <section class="panel" id="article-editor">
-        <h2>{form_title}</h2>
-        <form method="post" action="/ui/articles" novalidate>
-            {_search_fields(search, post=True)}
-            <input type="hidden" name="article_id" value="{h(edit_id)}">
-            <div class="grid taxonomy-fields">
-                <label>Nombre
-                    <input name="name" value="{h(current.get('name', ''))}" required>
-                </label>
-                {_taxonomy_fields("article", current, store.get_inventory())}
-                <label>Precio unitario (opcional)
-                    <input name="unit_price" type="number" min="0" step="1"
-                           value="{h(current.get('unit_price') if current.get('unit_price') is not None else '')}">
-                </label>
-            </div>
-            <div class="actions">
-                <button type="submit">Guardar artículo</button>
-            </div>
-        </form>
-    </section>"""
+    body = render(
+        'web/articles_page.html',
+        sold_table=sold_table,
+        article_browser_store_search=_article_browser(inventory, search),
+        form_title=form_title,
+        search_fields_search_post_True=_search_fields(search, post=True),
+        edit_id=edit_id,
+        current_get_name=current.get('name', ''),
+        taxonomy_fields_article_current_store_get_inventory=_taxonomy_fields('article', current, inventory),
+        current_get_unit_price_if_current_get_unit_price_is_not_None=current.get('unit_price') if current.get('unit_price') is not None else '',
+    )
     styles = (
-        _subcategory_styles(store.get_inventory()) + _article_page_styles()
+        _subcategory_styles(inventory) + _article_page_styles()
         + table_pages.responsive_styles()
     )
     return layout("Artículos", alert(error) + body, styles)
 
 
 def _event_row(event: dict) -> str:
-    return f"""<tr>
-        <td data-label="Fecha">{h(event['at'])}</td>
-        <td data-label="Acción">{h(event['action'])}</td>
-        <td data-label="Detalle">{h(event['detail'])}</td>
-    </tr>"""
+    return render(
+        'web/event_row.html',
+        event_at=event['at'],
+        event_action=event['action'],
+        event_detail=event['detail'],
+    )
 
 
 def events_page(store: Store, page: int = 1) -> str:
+    events = store.get_events()
     table = table_pages.table_pages(
-        list(reversed(store.get_events())), page, ("Fecha", "Acción", "Detalle"),
+        list(reversed(events)), page, ("Fecha", "Acción", "Detalle"),
         _event_row, lambda target: "/registros?" + urlencode({"page": target}),
         "movimientos", "Páginas de registros", "Sin movimientos.", "journey-events",
     )
     try:
         journey_id, _payload = store.get_last_export()
-        download = f"""<details class="export-downloads">
-            <summary class="button quiet">Descargar última jornada</summary>
-            {download_form(journey_id)}
-        </details>"""
+        download = render(
+            'web/events_page.html',
+            download_form_journey_id_store__export_close_id=download_form(journey_id, store._export_close_id),
+        )
     except DomainError:
-        download = ""
+        download = "<p>Los archivos de la jornada recuperada estarán disponibles cuando vuelva a cerrarse.</p>" if store.journey and any(
+            e["action"] == "journey_recovered" and e["journey_id"] == store.journey["id"]
+            for e in events
+        ) else ""
 
-    body = f"""<section class="panel">
-        <h2>Movimientos de la jornada</h2>
-        {table}
-        <p>Esta lista muestra únicamente la jornada activa. Sus registros se incluyen
-           en la exportación JSON al cerrarla.</p>
-        {download}
-    </section>"""
+    body = render(
+        'web/events_page_2.html',
+        table=table,
+        download=download,
+    )
     return layout("Registros y exportación", body, table_pages.responsive_styles())
 
 
 def confirm_page(store: Store, action: str) -> str:
+    if action == "recover":
+        info = store.recovery_info()
+        if not info:
+            return layout("Recuperar jornada", "<p>No hay una jornada recuperable.</p>")
+        warning = (
+            f'Se descartará la jornada actual «{info["active_title"]}» sin contabilizar sus ventas. '
+            if info["active_id"] else ""
+        )
+        warning += "Se reabrirá la jornada anterior al momento previo a su cierre. El catálogo vigente se conserva."
+        fields = "".join(f'<input type="hidden" name="{key}" value="{h(info[key])}">'
+                         for key in ("close_id", "revision", "active_id"))
+        return layout("Recuperar jornada", render(
+            'web/confirm_page.html',
+            info_title=info['title'],
+            warning=warning,
+            fields=fields,
+        ))
     journey = store.get_journey()
     if not journey or action not in ("close", "discard"):
         message = '<p>Acción no disponible. <a href="/jornada">Volver a jornada</a>.</p>'
@@ -1070,26 +850,49 @@ def confirm_page(store: Store, action: str) -> str:
         if closing else f"Confirmar: {title}"
     )
 
-    body = f"""<section class="panel">
-        <p>Jornada: <strong>{h(journey['title'])}</strong>.</p>
-        <p>{h(effect)}</p>
-        <form method="post" action="/ui/journey">
-            <input type="hidden" name="action" value="{action}">
-            <input type="hidden" name="confirm" value="yes">
-            <input type="hidden" name="journey_id" value="{h(journey['id'])}">
-            <button class="{button_class}" type="submit">{h(button_label)}</button>
-            <a class="button quiet" href="/jornada">Cancelar</a>
-        </form>
-    </section>"""
+    body = render(
+        'web/confirm_page_2.html',
+        journey_title=journey['title'],
+        effect=effect,
+        action=action,
+        journey_id=journey['id'],
+        button_class=button_class,
+        button_label=button_label,
+    )
     return layout(title, body)
 
 
-def closed_journey_page(journey_id: str) -> str:
-    body = f"""<section class="panel">
-        <p>La jornada se cerró y sus ventas se contabilizaron.</p>
-        <p>Podés descargar más de un formato, uno por vez, o elegir todo en ZIP.
-           La última jornada cerrada también está disponible en Registros durante
-           esta ejecución, hasta que cierres otra jornada.</p>
-        {download_form(journey_id)}
-    </section>"""
+def closed_journey_page(journey_id: str, close_id: str | None = None) -> str:
+    body = render(
+        'web/closed_journey_page.html',
+        download_form_journey_id_close_id=download_form(journey_id, close_id),
+    )
     return layout("Jornada cerrada", body)
+
+
+def recovery_button(store: Store) -> str:
+    info = store.recovery_info()
+    if not info:
+        return ""
+    return render(
+        'web/recovery_button.html',
+        info_title=info['title'],
+    )
+
+
+def storage_notices(page):
+    """Muestra advertencias de recuperación en todas las páginas de negocio."""
+    @wraps(page)
+    def render(store, *args, **kwargs):
+        result = page(store, *args, **kwargs)
+        notices = "".join(alert(message) for message in store.storage.warnings)
+        return result.replace("<main>", "<main>" + notices, 1)
+    return render
+
+
+dashboard = storage_notices(dashboard)
+journey_page = storage_notices(journey_page)
+orders_page = storage_notices(orders_page)
+articles_page = storage_notices(articles_page)
+events_page = storage_notices(events_page)
+confirm_page = storage_notices(confirm_page)

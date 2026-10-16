@@ -148,7 +148,7 @@ async def check_tables(tmp_path, viewport):
         page = await context.new_page()
         page.set_default_timeout(5000)
         try:
-            await page.goto("http://order-manager.test/jornada")
+            await page.goto("http://127.0.0.1/jornada")
             orders = page.locator(f"#author-orders-{first['id']} .journey-page-size:visible")
             subtotals = page.locator(f"#author-subtotals-{first['id']} .journey-page-size:visible")
             assert await orders.locator("tbody tr").count() == size

@@ -1,0 +1,45 @@
+{
+  "services": {
+    "order-manager": {
+      "image": "order-manager:0.3",
+      "build": {
+        "context": ".",
+        "dockerfile": "Dockerfile",
+        "args": {
+          "APP_UID": "${APP_UID:-10001}",
+          "APP_GID": "${APP_GID:-10001}"
+        }
+      },
+      "user": "${APP_UID:-10001}:${APP_GID:-10001}",
+      "environment": {
+        "DATA_DIR": "${CONTAINER_DATA_DIR:-/data}",
+        "LOG_LEVEL": "${LOG_LEVEL:-INFO}"
+      },
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${HOST_DATA_DIR:?Defina HOST_DATA_DIR como directorio absoluto existente}",
+          "target": "${CONTAINER_DATA_DIR:-/data}",
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "ports": [
+        "127.0.0.1:${APP_PORT:-8000}:8000"
+      ],
+      "read_only": true,
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,size=16m,mode=1777"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "restart": "unless-stopped",
+      "stop_grace_period": "20s"
+    }
+  }
+}

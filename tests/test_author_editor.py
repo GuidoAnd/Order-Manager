@@ -74,7 +74,7 @@ async def check_author_editors(tmp_path, viewport):
         await context.route("**/*", lambda route: serve_asgi(app, route))
         page = await context.new_page()
         try:
-            await page.goto("http://order-manager.test/jornada")
+            await page.goto("http://127.0.0.1/jornada")
             add = page.locator(".author-add")
             edit = page.locator(".author-editor")
             names = page.locator(".author-names")

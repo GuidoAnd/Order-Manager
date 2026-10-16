@@ -155,7 +155,7 @@ async def run_mobile_workflow(tmp_path, viewport):
         page = await context.new_page()
         page.set_default_timeout(5000)
         try:
-            await page.goto("http://order-manager.test/")
+            await page.goto("http://127.0.0.1/")
             assert await page.get_by_role("heading", name="Dashboard").is_visible()
             await assert_layout(page, viewport)
 
@@ -175,6 +175,9 @@ async def run_mobile_workflow(tmp_path, viewport):
             await assert_layout(page, viewport)
 
             await navigate_section(page, "Órdenes")
+            await page.get_by_role("link", name="Agregar nueva orden").click()
+            await page.get_by_label("Serie", exact=True).select_option("10")
+            await page.get_by_label("Numeración", exact=True).fill("001")
             await assert_layout(page, viewport)
             await assert_order_buttons(page, viewport)
             await page.locator('select[name="author_id"]').select_option(label="Ana")
@@ -199,12 +202,13 @@ async def run_mobile_workflow(tmp_path, viewport):
             await assert_layout(page, viewport)
 
             await page.locator("#order-results .order-actions-menu:visible summary").click()
-            await page.get_by_role("button", name="Editar", exact=True).click()
+            await page.get_by_role("button", name="Editar orden", exact=True).click()
             order_id_field = page.locator(
                 'form[action="/ui/orders/form"] input[name="order_id"]'
             )
             order_id = await order_id_field.input_value()
-            await page.locator('input[name="new_unit_price_1"]').fill("")
+            assert await page.locator('input[name="source_1"][value="inventory"]').is_checked()
+            await page.locator('input[name="unit_price_1"]').fill("-1")
             await page.get_by_role("button", name="Guardar orden").click()
             assert await page.get_by_role("alert").is_visible()
             assert await page.get_by_role("heading", name="Editar orden").is_visible()
@@ -212,7 +216,7 @@ async def run_mobile_workflow(tmp_path, viewport):
             assert await order_id_field.input_value() == order_id
             assert await page.locator('input[name="quantity_0"]').input_value() == "3"
             await assert_layout(page, viewport)
-            await page.locator('input[name="new_unit_price_1"]').fill("2500")
+            await page.locator('input[name="unit_price_1"]').fill("2500")
             await page.get_by_role("button", name="Guardar orden").click()
             assert await page.locator("#order-results .order-actions-menu:visible").count() == 1
             assert await page.get_by_role("cell", name="13400").is_visible()
@@ -296,6 +300,9 @@ async def run_mobile_workflow(tmp_path, viewport):
             await assert_layout(page, viewport)
 
             await navigate_section(page, "Órdenes")
+            await page.get_by_role("link", name="Agregar nueva orden").click()
+            await page.get_by_label("Serie", exact=True).select_option("10")
+            await page.get_by_label("Numeración", exact=True).fill("001")
             await page.locator('select[name="author_id"]').select_option(label="Ana")
             await page.locator('select[name="catalog_id_0"]').select_option(
                 label="Agua Villamanaos 600cc · precio a completar"
@@ -342,9 +349,11 @@ async def run_mobile_workflow(tmp_path, viewport):
             await page.get_by_role("searchbox", name="Buscar por nombre").fill("agua de los cielos")
             await page.get_by_role("button", name="Buscar", exact=True).click()
             assert await page.locator("#available-articles tbody tr:visible").count() == 1
-            assert await page.locator("#available-articles").get_by_role("button", name="Eliminar").count() == 0
+            assert await page.locator("#available-articles").get_by_role("button", name="Eliminar", include_hidden=True).count() > 0
             await assert_article_layout(page, viewport)
-            await page.get_by_role("link", name="Ver órdenes que lo usan").click()
+            assert await page.get_by_role("link", name="Ver órdenes que lo usan").count() == 0
+            product = next(a for a in app.state.store.get_available_articles() if a["name"] == "Agua de los cielos")
+            await page.goto(f"http://127.0.0.1/ordenes?article={product['id']}")
             assert await page.get_by_role("cell", name="Agua de los cielos × 3").is_visible()
             assert await page.get_by_role("cell", name="Cafe × 3, Agua Villamanaos 600cc × 2").count() == 0
             assert await page.locator("#order-results .order-actions-menu:visible").count() == 1

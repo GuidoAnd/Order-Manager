@@ -1,11 +1,16 @@
 """API HTTP y rutas de interfaz del gestor de órdenes."""
 from __future__ import annotations
 
+import os
+import logging
+from secrets import token_urlsafe
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import parse_qs, urlencode
 
 from fastapi import FastAPI, Query, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -19,6 +24,11 @@ from . import journey_results, web
 from .article_search import ArticleSearch
 from .export_formats import ExportFormat, download_file
 from .store import MAX_INPUT_INTEGER, DomainError, Store
+from .runtime_logging import LogConfig, RequestDiagnostics
+from .journey_navigation import JourneyNavigation
+from .health import HealthCheck
+from .security import LocalSecurity, MAX_FIELDS
+from .input_validation import bounded_text
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -44,6 +54,12 @@ class JourneyConfirmation(BaseModel):
     journey_id: str = Field(min_length=1)
 
 
+class RecoveryConfirmation(BaseModel):
+    close_id: str = Field(min_length=1)
+    revision: str = Field(min_length=1)
+    active_id: str = ""
+
+
 class ArticleInput(BaseModel):
     name: str
     category: str
@@ -52,6 +68,7 @@ class ArticleInput(BaseModel):
 
 
 class LineInput(BaseModel):
+    line_id: str | None = Field(default=None, min_length=1, max_length=36)
     catalog_id: str | None = None
     name: str | None = None
     category: str | None = None
@@ -61,6 +78,8 @@ class LineInput(BaseModel):
 
 
 class OrderInput(BaseModel):
+    series: Literal["10", "20"]
+    serial_number: NonBooleanInt = Field(ge=1, le=160)
     author_id: str
     status: Literal["sale", "not_billed"] = "sale"
     lines: list[LineInput] = Field(min_length=1, max_length=50)
@@ -72,7 +91,7 @@ def order_form_rows(values: dict, count: int, inventory: dict) -> list[dict]:
         row = {
             key: values.get(f"{key}_{index}", "")
             for key in (
-                "source", "catalog_id", "name", "category", "quantity",
+                "source", "catalog_id", "line_id", "name", "category", "quantity",
                 "unit_price", "new_unit_price",
             )
         }
@@ -117,18 +136,67 @@ def order_form_lines(rows: list[dict], inventory: dict) -> list[dict]:
             line["unit_price"] = row["new_unit_price"]
         else:
             raise DomainError(f"Artículo {index}: elige Del inventario o Nuevo producto.")
+        if row.get("line_id"):
+            line["line_id"] = row["line_id"]
         lines.append(line)
     return lines
 
 
-def make_app(global_file: Path | None = None) -> FastAPI:
-    app = FastAPI(title="Order Manager", version="0.2")
-    store = Store(global_file or ROOT / "data" / "global_stats.json")
+def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
+             log_config: LogConfig | None = None) -> FastAPI:
+    if global_file is not None and data_dir is not None:
+        raise ValueError("Indique global_file o data_dir, no ambos.")
+    directory = Path(data_dir or os.environ.get("DATA_DIR") or ROOT / "data").resolve()
+    store = Store(global_file or directory / "global_stats.json", log_config=log_config)
+
+    @asynccontextmanager
+    async def lifespan(app):
+        try:
+            yield
+        finally:
+            store.runtime_log.record(logging.INFO, "Aplicación detenida.", "shutdown")
+            store.runtime_log.close()
+
+    app = FastAPI(title="Order Manager", version="0.3", lifespan=lifespan)
+    app.add_middleware(RequestDiagnostics, runtime=store.runtime_log)
+    app.add_middleware(LocalSecurity, token=token_urlsafe(32), runtime=store.runtime_log)
     app.state.store = store
+    navigation = JourneyNavigation()
+    app.state.journey_navigation = navigation
+    health = HealthCheck(store)
+    app.state.health = health
+
+    @app.get("/api/health")
+    def health_status():
+        result = health.check()
+        return JSONResponse(result, status_code=503 if result["status"] == "unavailable" else 200)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, error: RequestValidationError):
+        details = [{"loc": list(item["loc"]), "msg": item["msg"], "type": item["type"]}
+                   for item in error.errors()]
+        return JSONResponse({"detail": details}, status_code=422)
 
     @app.exception_handler(DomainError)
-    async def domain_error(_request: Request, error: DomainError):
+    async def domain_error(request: Request, error: DomainError):
+        if not request.url.path.startswith("/api/"):
+            title = "Almacenamiento no disponible" if error.status == 503 else "Acción no disponible"
+            return HTMLResponse(web.layout(title, web.alert(str(error))),
+                                status_code=error.status)
         return JSONResponse({"detail": str(error)}, status_code=error.status)
+
+    @app.get("/api/storage")
+    def storage_status():
+        return {"available": not store.storage.blocked, "warnings": store.storage.warnings,
+                "revision": store.storage.revision, "diagnostic_log_available": not store.runtime_log.file.failed}
+
+    @app.get("/api/journey/recovery")
+    def recovery_info():
+        return store.recovery_info()
+
+    @app.post("/api/journey/recover")
+    def recover_journey(data: RecoveryConfirmation):
+        return store.recover_journey(data.close_id, data.revision, data.active_id)
 
     @app.get("/api/journey")
     def get_journey():
@@ -156,9 +224,16 @@ def make_app(global_file: Path | None = None) -> FastAPI:
         )
 
     @app.get("/api/exports/last")
-    def latest_export(journey_id: str | None = None, format: ExportFormat = "json"):
-        journey_id, payload = store.get_last_export(journey_id)
-        filename, media_type, content = download_file(journey_id, payload, format)
+    def latest_export(journey_id: str | None = None, format: ExportFormat = "json",
+                      close_id: str | None = None):
+        journey_id, payload = store.get_last_export(journey_id, close_id)
+        try:
+            filename, media_type, content = download_file(journey_id, payload, format)
+        except Exception as error:
+            store.runtime_log.record(logging.ERROR, "Falló la generación de la descarga.", "export_failed",
+                                    error=error, journey_id=journey_id, format=format)
+            raise
+        store.runtime_log.record(logging.INFO, "Descarga generada.", "export_generated", journey_id=journey_id, format=format)
         return Response(
             content,
             media_type=media_type,
@@ -218,12 +293,14 @@ def make_app(global_file: Path | None = None) -> FastAPI:
     def create_order(data: OrderInput):
         return store.save_order(
             data.author_id, [line.model_dump() for line in data.lines], status=data.status,
+            series=data.series, serial_number=data.serial_number,
         )
 
     @app.put("/api/orders/{order_id}")
     def update_order(order_id: str, data: OrderInput):
         lines = [line.model_dump() for line in data.lines]
-        return store.save_order(data.author_id, lines, order_id, status=data.status)
+        return store.save_order(data.author_id, lines, order_id, status=data.status,
+                                series=data.series, serial_number=data.serial_number)
 
     @app.delete("/api/orders/{order_id}", status_code=204)
     def delete_order(order_id: str):
@@ -252,10 +329,19 @@ def make_app(global_file: Path | None = None) -> FastAPI:
 
     @app.get("/jornada", response_class=HTMLResponse)
     def journey_page(request: Request):
-        pages = web.journey_article_pages(dict(request.query_params))
         values = dict(request.query_params)
+        warning = ""
+        if "pages" in values:
+            journey = store.get_journey()
+            saved = navigation.load(values["pages"], journey["id"] if journey else "")
+            if saved is None:
+                values = {}
+                warning = "El enlace de navegación caducó o pertenece a otra jornada. Las tablas vuelven a la primera página."
+            else:
+                values = {**saved, **values}
         return web.journey_page(
-            store, article_pages=pages,
+            store, error=warning, navigation=navigation,
+            article_pages=web.journey_article_pages(values),
             order_pages=journey_results.page_values(values, "orders"),
             subtotal_pages=journey_results.page_values(values, "subtotals"),
         )
@@ -264,7 +350,18 @@ def make_app(global_file: Path | None = None) -> FastAPI:
     def orders_page(
         edit: str = "", article: str = "", page: int = Query(default=1, ge=1), q: str = "",
     ):
-        return web.orders_page(store, edit_id=edit, article_id=article, page=page, query=q)
+        if edit:
+            return RedirectResponse(web.order_editor_url(edit, page, article, q), status_code=303)
+        return web.orders_page(store, article_id=article, page=page, query=q)
+
+    @app.get("/ordenes/nueva", response_class=HTMLResponse)
+    def new_order(page: int = Query(default=1, ge=1), article: str = "", q: str = ""):
+        return web.orders_page(store, editor=True, page=page, article_id=article, query=q)
+
+    @app.get("/ordenes/{order_id}/editar", response_class=HTMLResponse)
+    def edit_order(order_id: str, page: int = Query(default=1, ge=1), article: str = "", q: str = ""):
+        return web.orders_page(store, editor=True, edit_id=order_id, page=page,
+                               article_id=article, query=q)
 
     @app.get("/articulos", response_class=HTMLResponse)
     def articles_page(
@@ -279,15 +376,15 @@ def make_app(global_file: Path | None = None) -> FastAPI:
         return web.events_page(store, page=page)
 
     @app.get("/exportaciones", response_class=HTMLResponse)
-    def exports_page(journey_id: str):
+    def exports_page(journey_id: str, close_id: str | None = None):
         try:
-            store.get_last_export(journey_id)
+            store.get_last_export(journey_id, close_id)
         except DomainError as error:
             return HTMLResponse(web.layout("Exportación no disponible", (
                 f'<p role="alert">{web.h(error)}</p>'
                 '<a class="button quiet" href="/">Volver al Dashboard</a>'
             )), status_code=error.status)
-        return web.closed_journey_page(journey_id)
+        return web.closed_journey_page(journey_id, store._export_close_id)
 
     @app.get("/confirmar/{action}", response_class=HTMLResponse)
     def confirm_page(action: str):
@@ -297,7 +394,13 @@ def make_app(global_file: Path | None = None) -> FastAPI:
         raw = await request.body()
         if len(raw) > 65536:
             raise DomainError("Formulario demasiado grande.", 413)
-        parsed = parse_qs(raw.decode("utf-8"), keep_blank_values=True)
+        parsed = parse_qs(raw.decode("utf-8"), keep_blank_values=True,
+                          max_num_fields=MAX_FIELDS, errors="strict")
+        for key in ("q", "filter_category", "filter_subcategory"):
+            try:
+                bounded_text(parsed.get(key, [""])[-1], "Filtro")
+            except ValueError as error:
+                raise DomainError(str(error)) from None
         return {key: values[-1] for key, values in parsed.items()}
 
     @app.post("/ui/journey")
@@ -322,9 +425,12 @@ def make_app(global_file: Path | None = None) -> FastAPI:
                 journey_id = values.get("journey_id", "")
                 store.close_journey(journey_id)
                 return RedirectResponse(
-                    "/exportaciones?" + urlencode({"journey_id": journey_id}),
+                    "/exportaciones?" + urlencode({"journey_id": journey_id, "close_id": store._export_close_id}),
                     status_code=303,
                 )
+            elif action == "recover" and values.get("confirm") == "yes":
+                store.recover_journey(values.get("close_id", ""), values.get("revision", ""),
+                                      values.get("active_id", ""))
             elif action == "discard" and values.get("confirm") == "yes":
                 store.discard_journey(values.get("journey_id", ""))
             else:
@@ -440,6 +546,7 @@ def make_app(global_file: Path | None = None) -> FastAPI:
                     order_form_lines(rows, inventory),
                     values.get("order_id") or None,
                     status=values.get("order_status", "sale"),
+                    series=values.get("series", ""), serial_number=values.get("serial_number", ""),
                 )
                 return RedirectResponse(web.orders_url(**state) + "#order-results", status_code=303)
             else:
@@ -450,6 +557,8 @@ def make_app(global_file: Path | None = None) -> FastAPI:
                 values.get("author_id", ""),
                 values.get("order_id", ""),
                 order_status=values.get("order_status", "sale"),
+                editor=True, series=values.get("series", ""),
+                serial_number=values.get("serial_number", ""),
                 **state,
             )
             return HTMLResponse(page)
@@ -461,8 +570,10 @@ def make_app(global_file: Path | None = None) -> FastAPI:
                     rows=rows,
                     author_id=values.get("author_id", ""),
                     edit_id=values.get("order_id", ""),
-                    error=str(error),
+                    error=str(error) if isinstance(error, DomainError) else "Datos de línea inválidos.",
                     order_status=values.get("order_status", "sale"),
+                    editor=True, series=values.get("series", ""),
+                    serial_number=values.get("serial_number", ""),
                     **state,
                 ),
                 status_code=status,

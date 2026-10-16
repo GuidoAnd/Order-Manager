@@ -1,0 +1,13 @@
+**
+!Dockerfile
+!.dockerignore
+!requirements.txt
+!api.py
+!order_manager/
+!order_manager/**
+!static/
+!static/**
+!docker/
+!docker/entrypoint.sh
+**/__pycache__/
+**/*.py[cod]

@@ -1,7 +1,10 @@
 # ADR-002 — Persistencia local en JSON
 
 ## Estado
-Aceptada
+Sustituida para v0.3 por [ADR-009](ADR-009-persistencia-volumenes-y-rollback.md).
+
+Actualización: 2026-10-14. El contenido siguiente registra la decisión de v0.2;
+la implementación vigente persiste también jornada, recuperación y descarga.
 
 ## Fecha
 2026-09-29

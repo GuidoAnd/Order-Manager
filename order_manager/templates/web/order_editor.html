@@ -1,0 +1,54 @@
+<section class="panel" id="order-editor">
+        <h2>{{ form_title }}</h2>
+        <p>Selecciona artículos del inventario y agrega varias líneas, por ejemplo
+           Café × 3. Completa el precio cuando el artículo no lo tenga definido.
+           El total de una venta se calcula al guardar.</p>
+        <form class="order-form" method="post" action="/ui/orders/form" novalidate>
+            {{ list_fields | safe }}
+            <input type="hidden" name="count" value="{{ line_count }}">
+            <input type="hidden" name="order_id" value="{{ edit_id }}">
+            <label>Autor
+                <select aria-label="Autor" name="author_id" required>
+                    <option value="">Seleccionar autor</option>
+                    {{ author_options | safe }}
+                </select>
+            </label>
+            <div class="order-identification">
+                <label>Serie
+                    <select aria-label="Serie" name="series" required aria-describedby="series-range{% if field_errors.series %} series-error{% endif %}"{% if field_errors.series %} aria-invalid="true"{% endif %}>
+                        <option value="">Seleccionar serie</option>
+                        <option value="10"{% if series == '10' %} selected{% endif %}>10</option>
+                        <option value="20"{% if series == '20' %} selected{% endif %}>20</option>
+                    </select>
+                    {% if field_errors.series %}<span class="field-error" id="series-error">{{ field_errors.series }}</span>{% endif %}
+                </label>
+                <label>Numeración
+                    <input aria-label="Numeración" name="serial_number" type="number" min="1" max="160" step="1"
+                           value="{{ serial_number }}" required aria-describedby="series-range{% if field_errors.serial_number %} serial-error{% endif %}"{% if field_errors.serial_number %} aria-invalid="true"{% endif %}>
+                </label>
+                {% if field_errors.serial_number %}<p class="field-error" id="serial-error">{{ field_errors.serial_number }}</p>{% endif %}
+                <p id="series-range">Serie 10: 001–080. Serie 20: 081–160. Numeración manual.</p>
+            </div>
+            <fieldset class="order-status-choice">
+                <legend>Tipo de orden</legend>
+                <div class="order-status-options">
+                    <input id="order_sale" name="order_status" type="radio"
+                           value="sale"{{ sale_checked | safe }}>
+                    <label for="order_sale">Venta</label>
+                    <input id="order_not_billed" name="order_status" type="radio"
+                           value="not_billed"{{ not_billed_checked | safe }}>
+                    <label for="order_not_billed">No facturada (regalo/cancelada)</label>
+                </div>
+                <p class="not-billed-note">Conserva artículos y cantidades, sin importe.
+                   No suma ventas ni unidades a las estadísticas.</p>
+            </fieldset>
+            {{ line_cards | safe }}
+            <div class="actions order-actions">
+                <button class="add-article order-secondary" name="action" value="add">
+                    Agregar artículo
+                </button>
+                <button class="save-order" name="action" value="save">Guardar orden</button>
+                <a class="button quiet" href="/">Cancelar</a>
+            </div>
+        </form>
+    </section>

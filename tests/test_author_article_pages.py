@@ -110,7 +110,7 @@ async def check_pages(tmp_path, viewport):
         await context.route("**/*", lambda route: serve_asgi(app, route))
         page = await context.new_page()
         try:
-            await page.goto("http://order-manager.test/jornada")
+            await page.goto("http://127.0.0.1/jornada")
             size = 2 if viewport[0] < 375 else 3 if viewport[0] <= 650 else 4 if viewport[0] < 1024 else 5
             first_table = page.locator(f"#author-articles-{first['id']}").locator(".journey-page-size:visible")
             second_table = page.locator(f"#author-articles-{second['id']}").locator(".journey-page-size:visible")

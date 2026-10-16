@@ -738,3 +738,11 @@ footer {
     font-weight: 600;
     overflow-wrap: anywhere;
 }
+
+.order-series { display: block; font-size: .9em; overflow-wrap: anywhere; }
+.order-identification { display: grid; gap: .75rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.order-identification p { grid-column: 1 / -1; }
+@media (max-width: 650px) { .order-identification { grid-template-columns: minmax(0, 1fr); } }
+
+.field-error { color: #a32020; font-weight: 600; }
+[aria-invalid="true"] { border-color: #a32020; }

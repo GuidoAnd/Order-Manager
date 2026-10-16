@@ -1,0 +1,10 @@
+<div class="table-page-view table-page-{{ size | safe }}">
+            <p role="status">{{ total | safe }} {{ label }} · Página {{ current | safe }} de {{ count | safe }}</p>
+            <div class="table-wrap responsive-table">
+                <table>
+                    <thead><tr>{{ header | safe }}</tr></thead>
+                    <tbody>{{ rows | safe }}</tbody>
+                </table>
+            </div>
+            <nav class="pagination" aria-label="{{ navigation }}">{{ join_links | safe }}</nav>
+        </div>

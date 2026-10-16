@@ -1,0 +1,22 @@
+<tr>
+        <td data-label="Número">#{{ order_number }}{% if serial_label %}<span class="order-series">{{ serial_label }}</span>{% endif %}{{ status_label | safe }}</td>
+        <td data-label="Autor">{{ author_name }}</td>
+        <td data-label="Artículos">{{ details }}</td>
+        <td data-label="Total">{{ total | safe }}</td>
+        <td data-label="Acciones">
+            <details class="order-actions-menu">
+                <summary class="button quiet" aria-label="Acciones de la orden {{ order_number_2 }}">Acciones</summary>
+                <div class="row-actions">
+                    <form method="get" action="{{ editor_url }}">
+                        {{ order_list_fields_page_article_id_query | safe }}
+                        <button type="submit">Editar orden</button>
+                    </form>
+                    <form method="post" action="/ui/orders/delete">
+                        {{ order_list_fields_page_article_id_query_2 | safe }}
+                        <input type="hidden" name="order_id" value="{{ order_id_2 }}">
+                        <button class="danger" type="submit">Eliminar</button>
+                    </form>
+                </div>
+            </details>
+        </td>
+    </tr>

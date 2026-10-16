@@ -89,7 +89,7 @@ def test_edit_delete_and_validation_preserve_search(app):
     assert not any(item["id"] == coffee["id"] for item in store.get_inventory()["articles"])
 
 
-def test_temporary_article_links_only_to_orders_using_its_full_identity(app):
+def test_article_filter_matches_full_identity_without_shortcut(app):
     store = app.state.store
     ana = store.get_journey()["authors"][0]
     bob = store.add_author("Bob")
@@ -102,21 +102,24 @@ def test_temporary_article_links_only_to_orders_using_its_full_identity(app):
     store.save_order(ana["id"], [{**line, "category": "Postres", "subcategory": "Golosinas"}])
     _, _, page = request(app, "GET", "/articulos?q=especial&category=Otros")
     rows = available_rows(page)
-    assert "Temporal de esta jornada" in rows
-    assert 'name="article_id"' not in rows
-    link = unescape(re.search(r'href="([^"]+)">Ver órdenes que lo usan', rows).group(1))
+    assert "Temporal de esta jornada" not in rows
+    assert 'name="article_id"' in rows
+    assert "Ver órdenes que lo usan" not in rows
+    product = next(a for a in store.get_available_articles()
+                   if a["name"].casefold() == "especial" and a["category"] == "Otros")
+    link = f"/ordenes?article={product['id']}"
     status, _, orders = request(app, "GET", link)
     assert status == 200
     assert "Especial × 1" in orders and "ESPECIAL × 2" in orders
     first_page = orders.split('<div class="order-page-size', 1)[1].split(
         '<div class="order-page-size', 1,
     )[0]
-    assert first_page.count('name="edit"') == 2
+    assert first_page.count('>Editar orden</button>') == 2
     store.delete_order(first["id"])
     store.delete_order(second["id"])
     status, _, stale = request(app, "GET", link)
     assert status == 200
-    assert "El artículo ya no está presente" in stale
+    assert "No hay órdenes que usen este artículo" in stale
     assert 'name="edit"' not in stale
 
 

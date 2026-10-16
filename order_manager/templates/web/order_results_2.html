@@ -1,0 +1,5 @@
+<div class="order-page-size order-page-{{ size | safe }}">
+        <p role="status">{{ total | safe }} {{ label | safe }} · Página {{ page | safe }} de {{ pages | safe }}</p>
+        {{ content | safe }}
+        <nav class="pagination" aria-label="Páginas de órdenes">{{ join_links | safe }}</nav>
+    </div>
