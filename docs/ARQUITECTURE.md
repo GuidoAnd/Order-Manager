@@ -1,4 +1,7 @@
-# Arquitectura de Order Manager — v0.3 en desarrollo
+# Arquitectura de Order Manager — v0.3
+
+Versión cerrada documentalmente el 2026-10-18. El
+[resumen de versión](version/v0_3.md) registra el alcance y la validación final.
 
 ## Componentes
 
@@ -41,8 +44,10 @@ acciones es durable y está separado del diagnóstico rotado.
   Un volumen compartido no coordina escritores.
 - DATA_DIR configurable y escribible; copias completas con la aplicación detenida.
   Un volumen y las descargas no sustituyen una copia de seguridad.
-- Uso desde un dispositivo, sin autenticación. Los requisitos para ampliar acceso
-  están definidos en ADR-005; no forman parte del alcance implementado.
+- Acceso por loopback de forma predeterminada, sin autenticación. `ALLOWED_HOSTS`
+  permite hosts adicionales como excepción temporal para una LAN; Compose configura
+  la publicación mediante `APP_BIND_HOST`. Identidad y control de conflictos siguen
+  fuera del alcance implementado, según ADR-005.
 - HTML/CSS sin JavaScript, con formularios del servidor y uso desde 320 px.
 - Solo la última exportación está disponible en el servidor; los acumulados no
   constituyen un archivo completo de todas las órdenes históricas.

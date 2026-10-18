@@ -2,12 +2,13 @@
 
 ## Estado
 
-Aceptada para uso local desde un dispositivo. Las etapas de red local y nube
-requieren implementación y validación antes de habilitar esos entornos.
+Aceptada para uso local desde un dispositivo, con excepción temporal de hosts
+explícitos para acceso LAN. Las etapas de red local con identidad y de nube
+conservan sus requisitos de implementación y validación.
 
 ## Fecha
 
-2026-10-11
+2026-10-11. Actualizaciones: 2026-10-16 y 2026-10-18.
 
 ## Contexto
 
@@ -25,8 +26,54 @@ la operación, pero no identifican a quien la solicita.
 Implementar controles de entrada y de navegador para el uso inicial desde un
 solo dispositivo, mediante FastAPI, Starlette y la biblioteca estándar de Python.
 Mantener el servicio vinculado a loopback según el comando de ejecución local.
-Aceptar los hosts `localhost`, `127.0.0.1` y `::1`; esta comprobación no modifica
-la interfaz de red del servidor ni sustituye su configuración de escucha.
+Aceptar por defecto los hosts `localhost`, `127.0.0.1` y `::1`; esta comprobación
+no modifica la interfaz de red del servidor ni sustituye su configuración de escucha.
+
+### Configuración de la excepción temporal
+
+La actualización del 2026-10-16 autoriza acceso LAN temporal desde varios equipos,
+incluidos móviles. La actualización del 2026-10-18 precisa la configuración y el
+alcance de los hosts permitidos:
+
+| Variable | Responsabilidad | Valor predeterminado |
+| --- | --- | --- |
+| `ALLOWED_HOSTS` | IP o nombres adicionales del servidor aceptados en HTTP. | Vacío; solo hosts de loopback. |
+| `APP_BIND_HOST` | Dirección del anfitrión donde Compose publica el servicio. | `127.0.0.1` |
+| `APP_PORT` | Puerto publicado para acceder desde el navegador. | `8000` |
+
+`ALLOWED_HOSTS` identifica destinos del servidor, no direcciones de los equipos
+clientes. Admite varios valores separados por comas, sin esquema, puerto, ruta
+ni comodines. Los nombres se comparan sin distinguir mayúsculas y las IP se
+normalizan; las IPv6 se configuran sin corchetes. Los hosts `localhost`,
+`127.0.0.1` y `::1` permanecen admitidos para operación local y healthcheck.
+La configuración se valida antes de abrir los datos y se fija por instancia.
+
+Ejemplo para un servidor cuya IP LAN es `192.168.1.50`, en `deployment.env`:
+
+```dotenv
+APP_BIND_HOST=192.168.1.50
+APP_PORT=8000
+ALLOWED_HOSTS=192.168.1.50,servidor.local
+```
+
+Los clientes acceden a `http://192.168.1.50:8000` o al nombre permitido cuando
+este resuelva al servidor. La aplicación no configura la resolución de nombres.
+Aceptar un host no modifica la escucha de Uvicorn ni abre puertos; tampoco cambia
+el firewall. `APP_BIND_HOST` y `APP_PORT` corresponden a la publicación de Compose.
+
+Cambiar estos valores requiere recrear el contenedor o reiniciar el proceso,
+sin reconstruir una imagen que ya admita esta configuración. Los formularios
+abiertos deben recargarse para obtener el token vigente. Para retirar la excepción,
+dejar `ALLOWED_HOSTS=` y `APP_BIND_HOST=127.0.0.1`, y recrear el contenedor.
+Los datos persistentes se conservan. El procedimiento está en la
+[guía de seguridad](../arquitecture/SEGURIDAD.md#excepción-temporal-de-hosts).
+
+### Controles conservados
+
+La excepción conserva el resto de los controles y no incorpora autenticación,
+HTTPS, sesiones ni detección de conflictos de edición. No representa la
+implementación de las etapas futuras. Quien alcance el servicio podrá operar
+como supervisor; se conserva una instancia y un worker.
 
 - Limitar el cuerpo HTTP a 64 KiB durante su recepción, sin depender únicamente
   de `Content-Length`. Limitar ruta y consulta a 8 KiB.
@@ -89,7 +136,8 @@ invalidar automáticamente datos persistidos antes de esta decisión.
 - Un formulario abierto antes de reiniciar requiere recargar la página para
   obtener el token vigente. Varias pestañas de la misma instancia son compatibles.
 - Los clientes de la API deben enviar JSON cuando la operación lleva cuerpo.
-- Los nombres de host externos y las direcciones LAN no se admiten en esta etapa.
+- Los hosts adicionales requieren configuración explícita. La lista identifica
+  destinos del servidor y no restringe los equipos clientes que pueden alcanzarlo.
 - La política de contenido bloquea scripts y recursos externos, incluidos los
   utilizados por las páginas interactivas de Swagger y ReDoc. El esquema JSON
   continúa disponible en `/openapi.json`.
@@ -102,7 +150,7 @@ invalidar automáticamente datos persistidos antes de esta decisión.
 
 ### Etapa 2 — Varios dispositivos en una red local
 
-Antes de ampliar el acceso:
+Para sustituir la excepción temporal por acceso LAN con identidad y sesiones:
 
 - Implementar autenticación del supervisor, gestión segura de contraseñas,
   sesiones con caducidad y cierre de sesión, y cookies con atributos adecuados.

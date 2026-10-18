@@ -10,11 +10,13 @@ La aplicación está planteada con FastAPI y Uvicorn y una interfaz HTML/CSS. La
 | --- | --- | --- |
 | v0.1 | Implementada | Módulos integrados de jornadas, autores, órdenes, artículos, ventas y estadísticas. |
 | v0.2 | Implementada; revisión final documentada | Inventario persistente, resultados por autor, interfaz móvil paginada, órdenes no facturadas y exportación JSON, dos CSV o ZIP. |
-| v0.3 | En desarrollo | Persistencia por acción, rollback y logging configurable; healthcheck, seguridad local y frontend Jinja2; empaquetado Docker multiarquitectura. |
+| v0.3 | Implementada; cierre documentado | Persistencia por acción, rollback y logging configurable; healthcheck, seguridad local y frontend Jinja2; empaquetado Docker multiarquitectura. |
 | v1.0 | Planificada | Versión final prevista del MVP. |
 
-La versión de desarrollo es v0.3; la API expone `0.3`. El
-[resumen de versión](docs/version/v0_3.md) describe el alcance y la validación.
+La versión actual es v0.3; la API expone `0.3`. Su cierre se documentó el
+2026-10-18, con **501 pruebas aprobadas**, sin fallos, errores ni omisiones.
+El [resumen de versión](docs/version/v0_3.md) describe el alcance y la
+[validación final](docs/tests/v0_3/V0_3_FINAL_REVIEW_20261018T221853Z.md).
 El cierre permite elegir JSON, CSV resumen, CSV detallado o los tres en ZIP.
 Registros permite repetir la última descarga sin volver a contabilizar ventas.
 
@@ -34,8 +36,9 @@ Registros permite repetir la última descarga sin volver a contabilizar ventas.
 - [Auditorías](docs/audits/)
 
 La seguridad actual limita solicitudes y protege formularios; no autentica al
-supervisor. Antes de habilitar red local o nube deben implementarse las etapas
-previstas en el [ADR de seguridad](docs/decisions/ADR-005-seguridad-local-y-escalabilidad.md).
+supervisor. Se admite acceso temporal desde una LAN mediante hosts explícitos;
+las etapas con identidad, sesiones y control de conflictos continúan previstas en
+el [ADR de seguridad](docs/decisions/ADR-005-seguridad-local-y-escalabilidad.md).
 
 ## Desarrollo local
 
@@ -87,8 +90,9 @@ cp deployment.env.example deployment.env
 Editar `deployment.env`: `HOST_DATA_DIR` elige el directorio absoluto del host;
 `CONTAINER_DATA_DIR` indica dónde se monta dentro del contenedor y configura
 `DATA_DIR` automáticamente. `APP_UID` y `APP_GID` definen el usuario sin
-privilegios, `APP_PORT` el puerto local y `LOG_LEVEL` admite INFO o DEBUG.
-El archivo de configuración está excluido de Git.
+privilegios, `APP_PORT` el puerto y `LOG_LEVEL` admite INFO o DEBUG.
+El archivo de configuración está excluido de Git. Para configurar el acceso desde
+otros equipos, consultar [SEGURIDAD.md](docs/arquitecture/SEGURIDAD.md#excepción-temporal-de-hosts).
 
 Crear el directorio de datos con permisos para el usuario elegido. Para los
 valores del ejemplo (`/srv/order-manager/data`, UID/GID `10001`):
@@ -110,7 +114,7 @@ docker compose --env-file deployment.env -f compose.json up -d
 ```
 
 Abrir **http://127.0.0.1:8000**; si se cambia `APP_PORT`, usar ese puerto.
-El acceso queda limitado al equipo local, con una instancia y un worker.
+El acceso predeterminado queda limitado al equipo local, con una instancia y un worker.
 La jornada, el inventario, las exportaciones y los logs permanecen en
 `HOST_DATA_DIR` al reemplazar el contenedor.
 
@@ -127,3 +131,10 @@ El contenedor incluye healthcheck. Para troubleshooting, configurar
 `down` conserva el directorio de datos del host; respaldarlo por separado.
 Consultar [Docker y datos persistentes](docs/arquitecture/DOCKER.md) para construcción
 multiarquitectura, permisos y copias de seguridad.
+
+## Comentarios
+
+La aplicación, en su versión v0.3, fue probada en producción. La simplicidad de
+su despliegue y de la configuración de infraestructura facilitó su puesta en
+marcha. Su uso permitió reducir el tiempo dedicado a la gestión de órdenes en
+comparación con el método anterior.

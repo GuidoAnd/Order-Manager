@@ -13,7 +13,8 @@
       "user": "${APP_UID:-10001}:${APP_GID:-10001}",
       "environment": {
         "DATA_DIR": "${CONTAINER_DATA_DIR:-/data}",
-        "LOG_LEVEL": "${LOG_LEVEL:-INFO}"
+        "LOG_LEVEL": "${LOG_LEVEL:-INFO}",
+        "ALLOWED_HOSTS": "${ALLOWED_HOSTS:-}"
       },
       "volumes": [
         {
@@ -26,7 +27,7 @@
         }
       ],
       "ports": [
-        "127.0.0.1:${APP_PORT:-8000}:8000"
+        "${APP_BIND_HOST:-127.0.0.1}:${APP_PORT:-8000}:8000"
       ],
       "read_only": true,
       "tmpfs": [

@@ -14,7 +14,9 @@ Copiar `deployment.env.example` a `deployment.env`, excluido de Git. Configurar:
 | HOST_DATA_DIR | Directorio absoluto existente del anfitrión | /srv/order-manager/data |
 | CONTAINER_DATA_DIR | Destino absoluto del montaje y DATA_DIR | /data |
 | APP_UID / APP_GID | Identidad numérica de construcción y ejecución | 10001 / 10001 |
-| APP_PORT | Puerto de acceso local | 8000 |
+| APP_BIND_HOST | IP del anfitrión donde publicar el puerto | 127.0.0.1 |
+| APP_PORT | Puerto de acceso | 8000 |
+| ALLOWED_HOSTS | IP o nombres adicionales del servidor, separados por comas | Vacío: solo loopback |
 | LOG_LEVEL | Diagnóstico INFO o DEBUG | INFO |
 
 El administrador crea el directorio y asigna permisos de lectura, escritura y
@@ -24,9 +26,12 @@ el arranque no crea DATA_DIR ni cambia propietarios. Si cambian UID/GID,
 reconstruir la imagen y ajustar permisos antes de iniciarla.
 
 Compose usa raíz de solo lectura y `/tmp` temporal; los datos de negocio y logs
-viven en DATA_DIR. Se publica el puerto únicamente en `127.0.0.1`. La aplicación
-no autentica al supervisor; mantener el acceso en el dispositivo local conforme
-al [ADR de seguridad](../decisions/ADR-005-seguridad-local-y-escalabilidad.md).
+viven en DATA_DIR. El puerto se publica en `127.0.0.1` de forma predeterminada.
+Para la excepción temporal LAN, configurar `APP_BIND_HOST` con la IP del servidor
+y añadir esa IP a `ALLOWED_HOSTS`. Los equipos acceden a `http://IP:APP_PORT`.
+Estas variables se aplican al crear el contenedor, sin modificar DATA_DIR.
+La aplicación no autentica al supervisor; consultar el
+[alcance de la excepción](SEGURIDAD.md#excepción-temporal-de-hosts).
 
 ## Comandos de despliegue
 

@@ -43,10 +43,12 @@
                    No suma ventas ni unidades a las estadísticas.</p>
             </fieldset>
             {{ line_cards | safe }}
-            <div class="actions order-actions">
+            <div class="actions order-add-actions">
                 <button class="add-article order-secondary" name="action" value="add">
                     Agregar artículo
                 </button>
+            </div>
+            <div class="actions order-actions">
                 <button class="save-order" name="action" value="save">Guardar orden</button>
                 <a class="button quiet" href="/">Cancelar</a>
             </div>
