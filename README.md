@@ -10,11 +10,13 @@ La aplicación está planteada con FastAPI y Uvicorn y una interfaz HTML/CSS. La
 | --- | --- | --- |
 | v0.1 | Implementada | Módulos integrados de jornadas, autores, órdenes, artículos, ventas y estadísticas. |
 | v0.2 | Implementada; revisión final documentada | Inventario persistente, resultados por autor, interfaz móvil paginada, órdenes no facturadas y exportación JSON, dos CSV o ZIP. |
-| v0.3 | En desarrollo | Persistencia por acción, rollback y logging configurable; healthcheck, seguridad local y frontend Jinja2; empaquetado Docker multiarquitectura. |
+| v0.3 | Implementada; cierre documentado | Persistencia por acción, rollback y logging configurable; healthcheck, seguridad local y frontend Jinja2; empaquetado Docker multiarquitectura. |
 | v1.0 | Planificada | Versión final prevista del MVP. |
 
-La versión de desarrollo es v0.3; la API expone `0.3`. El
-[resumen de versión](docs/version/v0_3.md) describe el alcance y la validación.
+La versión actual es v0.3; la API expone `0.3`. Su cierre se documentó el
+2026-10-18, con **501 pruebas aprobadas**, sin fallos, errores ni omisiones.
+El [resumen de versión](docs/version/v0_3.md) describe el alcance y la
+[validación final](docs/tests/v0_3/V0_3_FINAL_REVIEW_20261018T221853Z.md).
 El cierre permite elegir JSON, CSV resumen, CSV detallado o los tres en ZIP.
 Registros permite repetir la última descarga sin volver a contabilizar ventas.
 
@@ -88,10 +90,9 @@ cp deployment.env.example deployment.env
 Editar `deployment.env`: `HOST_DATA_DIR` elige el directorio absoluto del host;
 `CONTAINER_DATA_DIR` indica dónde se monta dentro del contenedor y configura
 `DATA_DIR` automáticamente. `APP_UID` y `APP_GID` definen el usuario sin
-privilegios, `APP_BIND_HOST` la IP de publicación (loopback por defecto),
-`APP_PORT` el puerto y `LOG_LEVEL` admite INFO o DEBUG. `ALLOWED_HOSTS` permite
-agregar direcciones del servidor para el acceso LAN temporal descrito abajo.
-El archivo de configuración está excluido de Git.
+privilegios, `APP_PORT` el puerto y `LOG_LEVEL` admite INFO o DEBUG.
+El archivo de configuración está excluido de Git. Para configurar el acceso desde
+otros equipos, consultar [SEGURIDAD.md](docs/arquitecture/SEGURIDAD.md#excepción-temporal-de-hosts).
 
 Crear el directorio de datos con permisos para el usuario elegido. Para los
 valores del ejemplo (`/srv/order-manager/data`, UID/GID `10001`):
@@ -131,42 +132,9 @@ El contenedor incluye healthcheck. Para troubleshooting, configurar
 Consultar [Docker y datos persistentes](docs/arquitecture/DOCKER.md) para construcción
 multiarquitectura, permisos y copias de seguridad.
 
-## Acceso temporal desde otros equipos de la red local
+## Comentarios
 
-La excepción permite acceder desde móvil o escritorio sin autenticación;
-cualquier equipo que alcance el servicio puede operar como supervisor.
-Se mantiene una instancia y un worker, con tokens, origen exacto y límites activos.
-
-En `deployment.env`, reemplazar la IP del ejemplo por la IP LAN del servidor:
-
-```dotenv
-APP_BIND_HOST=192.168.1.50
-APP_PORT=8000
-ALLOWED_HOSTS=192.168.1.50
-```
-
-`ALLOWED_HOSTS` contiene las IP o nombres del servidor usados en el navegador,
-no las IP de los dispositivos clientes. Admite varios separados por comas, sin
-URL ni puerto. Los hosts de loopback siguen habilitados para el healthcheck.
-
-Usar una imagen construida con el código que admite esta configuración. Si la
-imagen instalada es anterior, reconstruirla; para Atom, usar su Dockerfile específico
-y transferir la nueva imagen al equipo de destino. Después, con la imagen local
-actualizada, recrear el contenedor sin descargar ni reconstruir en el destino:
-
-```bash
-docker compose --env-file deployment.env -f compose.json \
-  up -d --no-build --pull never
-```
-
-Abrir `http://192.168.1.50:8000` desde los equipos de la LAN.
-Para ejecutar directamente con Uvicorn:
-
-```bash
-ALLOWED_HOSTS=192.168.1.50 .venv/bin/python -m uvicorn api:app \
-  --host 192.168.1.50 --port 8000 --workers 1
-```
-
-Para volver al acceso local en Compose, dejar `ALLOWED_HOSTS=` y
-`APP_BIND_HOST=127.0.0.1`, y repetir `up -d --no-build --pull never`.
-Consultar la [guía de seguridad](docs/arquitecture/SEGURIDAD.md).
+La aplicación, en su versión v0.3, fue probada en producción. La simplicidad de
+su despliegue y de la configuración de infraestructura facilitó su puesta en
+marcha. Su uso permitió reducir el tiempo dedicado a la gestión de órdenes en
+comparación con el método anterior.

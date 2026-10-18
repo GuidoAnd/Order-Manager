@@ -8,7 +8,7 @@ conservan sus requisitos de implementación y validación.
 
 ## Fecha
 
-2026-10-11. Actualización: 2026-10-16.
+2026-10-11. Actualizaciones: 2026-10-16 y 2026-10-18.
 
 ## Contexto
 
@@ -29,13 +29,46 @@ Mantener el servicio vinculado a loopback según el comando de ejecución local.
 Aceptar por defecto los hosts `localhost`, `127.0.0.1` y `::1`; esta comprobación
 no modifica la interfaz de red del servidor ni sustituye su configuración de escucha.
 
+### Configuración de la excepción temporal
+
 La actualización del 2026-10-16 autoriza acceso LAN temporal desde varios equipos,
-incluidos móviles, mediante `ALLOWED_HOSTS`. Esta variable agrega IP o nombres
-exactos del servidor; no admite URL, puerto ni comodines y no retira loopback.
+incluidos móviles. La actualización del 2026-10-18 precisa la configuración y el
+alcance de los hosts permitidos:
+
+| Variable | Responsabilidad | Valor predeterminado |
+| --- | --- | --- |
+| `ALLOWED_HOSTS` | IP o nombres adicionales del servidor aceptados en HTTP. | Vacío; solo hosts de loopback. |
+| `APP_BIND_HOST` | Dirección del anfitrión donde Compose publica el servicio. | `127.0.0.1` |
+| `APP_PORT` | Puerto publicado para acceder desde el navegador. | `8000` |
+
+`ALLOWED_HOSTS` identifica destinos del servidor, no direcciones de los equipos
+clientes. Admite varios valores separados por comas, sin esquema, puerto, ruta
+ni comodines. Los nombres se comparan sin distinguir mayúsculas y las IP se
+normalizan; las IPv6 se configuran sin corchetes. Los hosts `localhost`,
+`127.0.0.1` y `::1` permanecen admitidos para operación local y healthcheck.
 La configuración se valida antes de abrir los datos y se fija por instancia.
-Compose mantiene loopback por defecto y permite elegir la IP de publicación con
-`APP_BIND_HOST`. Retirar los hosts adicionales y volver a loopback revoca la
-excepción al recrear el contenedor o reiniciar el proceso.
+
+Ejemplo para un servidor cuya IP LAN es `192.168.1.50`, en `deployment.env`:
+
+```dotenv
+APP_BIND_HOST=192.168.1.50
+APP_PORT=8000
+ALLOWED_HOSTS=192.168.1.50,servidor.local
+```
+
+Los clientes acceden a `http://192.168.1.50:8000` o al nombre permitido cuando
+este resuelva al servidor. La aplicación no configura la resolución de nombres.
+Aceptar un host no modifica la escucha de Uvicorn ni abre puertos; tampoco cambia
+el firewall. `APP_BIND_HOST` y `APP_PORT` corresponden a la publicación de Compose.
+
+Cambiar estos valores requiere recrear el contenedor o reiniciar el proceso,
+sin reconstruir una imagen que ya admita esta configuración. Los formularios
+abiertos deben recargarse para obtener el token vigente. Para retirar la excepción,
+dejar `ALLOWED_HOSTS=` y `APP_BIND_HOST=127.0.0.1`, y recrear el contenedor.
+Los datos persistentes se conservan. El procedimiento está en la
+[guía de seguridad](../arquitecture/SEGURIDAD.md#excepción-temporal-de-hosts).
+
+### Controles conservados
 
 La excepción conserva el resto de los controles y no incorpora autenticación,
 HTTPS, sesiones ni detección de conflictos de edición. No representa la

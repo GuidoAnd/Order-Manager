@@ -1,4 +1,7 @@
-# Arquitectura de Order Manager — v0.3 en desarrollo
+# Arquitectura de Order Manager — v0.3
+
+Versión cerrada documentalmente el 2026-10-18. El
+[resumen de versión](version/v0_3.md) registra el alcance y la validación final.
 
 ## Componentes
 

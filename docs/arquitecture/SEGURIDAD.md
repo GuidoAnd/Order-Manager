@@ -16,7 +16,7 @@ las direcciones usadas en la URL, no los equipos clientes. Los tres hosts de
 loopback permanecen habilitados para operación y healthcheck. La configuración
 se lee al crear la aplicación; un cambio requiere reiniciar el proceso.
 
-Ejemplo para un servidor cuya IP LAN es `192.168.1.50`:
+En `deployment.env`, reemplazar la IP del ejemplo por la IP LAN del servidor:
 
 ```dotenv
 ALLOWED_HOSTS=192.168.1.50,order-manager.local
@@ -29,15 +29,50 @@ exactamente, sin distinguir mayúsculas; las IP se normalizan. No se admiten URL
 puertos ni comodines en `ALLOWED_HOSTS`; las IPv6 se escriben sin corchetes.
 Una configuración inválida impide crear la aplicación antes de abrir los datos.
 
-`APP_BIND_HOST` configura únicamente la publicación de Compose. Uvicorn fuera de
-Docker debe escuchar en la IP LAN mediante `--host`. Aceptar un host no abre puertos,
-no modifica firewall ni restringe la IP del cliente. La operación continúa en una
-instancia y un worker.
-
-Para retirar la excepción, dejar `ALLOWED_HOSTS=` y `APP_BIND_HOST=127.0.0.1` en
-`deployment.env` y recrear el contenedor. Con Uvicorn, retirar la variable y volver
-a escuchar en `127.0.0.1`. La jornada y los datos persistentes se conservan.
+`APP_BIND_HOST` configura únicamente la publicación de Compose y `APP_PORT` el
+puerto de acceso. Aceptar un host no abre puertos, no modifica firewall ni restringe
+la IP del cliente. La operación continúa en una instancia y un worker.
 Los tokens, origen exacto, límites y cabeceras siguientes también rigen en LAN.
+
+### Aplicar con Docker Compose
+
+Usar el `compose.json` actualizado y una imagen que admita `ALLOWED_HOSTS`.
+Si la imagen instalada es anterior a ese soporte, reconstruirla y actualizarla
+en el equipo de destino. Una imagen compatible no requiere reconstrucción al
+cambiar únicamente estas variables de entorno.
+
+Desde la raíz de la aplicación, recrear el contenedor usando la imagen local:
+
+```bash
+docker compose --env-file deployment.env -f compose.json \
+  up -d --no-build --pull never --force-recreate
+```
+
+Abrir `http://192.168.1.50:8000` desde los equipos de la LAN, utilizando la IP y
+el puerto configurados. El nombre del ejemplo también permite acceder mediante
+`http://order-manager.local:8000` cuando resuelva al servidor. Recargar las páginas
+abiertas después de recrear el contenedor para obtener el token vigente.
+
+### Ejecutar directamente con Uvicorn
+
+Uvicorn debe escuchar en la IP LAN mediante `--host`:
+
+```bash
+ALLOWED_HOSTS=192.168.1.50 .venv/bin/python -m uvicorn api:app \
+  --host 192.168.1.50 --port 8000 --workers 1
+```
+
+### Volver al acceso local
+
+En `deployment.env`:
+
+```dotenv
+APP_BIND_HOST=127.0.0.1
+ALLOWED_HOSTS=
+```
+
+Repetir el comando de recreación de Compose. Con Uvicorn, retirar la variable
+y volver a escuchar en `127.0.0.1`. La jornada y los datos persistentes se conservan.
 
 ## Límites
 

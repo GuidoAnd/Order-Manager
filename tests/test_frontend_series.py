@@ -172,14 +172,27 @@ def test_new_interfaces_manual_edit_cancel_and_layout(tmp_path, viewport):
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(headless=True)
             context = await browser.new_context(viewport={"width": viewport[0], "height": viewport[1]},
-                                                java_script_enabled=False)
+                                                java_script_enabled=False,
+                                                is_mobile=viewport[0] <= 430,
+                                                has_touch=viewport[0] <= 430)
             await context.route("**/*", lambda route: serve_asgi(app, route))
             page = await context.new_page()
             page.set_default_timeout(5000)
             try:
                 await page.goto("http://127.0.0.1/ordenes")
                 assert await page.locator("#order-editor").count() == 0
-                await page.get_by_role("link", name="Agregar nueva orden").click()
+                new_order = page.get_by_role("link", name="Agregar nueva orden")
+                button_box = await new_order.bounding_box()
+                main_box = await page.locator("main").bounding_box()
+                assert button_box["height"] >= 56
+                assert button_box["width"] >= min(240, main_box["width"])
+                assert abs(button_box["x"] + button_box["width"] / 2 -
+                           main_box["x"] - main_box["width"] / 2) <= 1
+                await assert_layout(page, viewport)
+                if viewport[0] <= 430:
+                    await new_order.tap()
+                else:
+                    await new_order.click()
                 assert await page.locator("#order-results").count() == 0
                 assert await page.get_by_label("Numeración", exact=True).input_value() == ""
                 assert await page.get_by_label("Serie", exact=True).locator("option").count() == 3

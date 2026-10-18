@@ -119,10 +119,17 @@ async def assert_layout(page, viewport):
 async def assert_order_buttons(page, viewport):
     add = await page.get_by_role("button", name="Agregar artículo").bounding_box()
     save = await page.get_by_role("button", name="Guardar orden").bounding_box()
+    cancel = await page.get_by_role("link", name="Cancelar", exact=True).bounding_box()
     remove = await page.get_by_role("button", name="Quitar artículo").last.bounding_box()
     assert add["height"] >= 44
     assert remove["height"] >= 44
     assert save["height"] > max(add["height"], remove["height"])
+    assert cancel["height"] >= 44
+    assert min(save["y"], cancel["y"]) - (add["y"] + add["height"]) >= 24
+    assert (save["x"] + save["width"] <= cancel["x"] or
+            cancel["x"] + cancel["width"] <= save["x"] or
+            save["y"] + save["height"] <= cancel["y"] or
+            cancel["y"] + cancel["height"] <= save["y"])
     if viewport[0] <= 650:
         assert save["width"] > max(add["width"], remove["width"])
         assert add["y"] - (remove["y"] + remove["height"]) >= 16
@@ -188,6 +195,7 @@ async def run_mobile_workflow(tmp_path, viewport):
             await page.get_by_role("button", name="Agregar artículo").click()
             assert await page.locator(".order-line").count() == 2
             await assert_layout(page, viewport)
+            await assert_order_buttons(page, viewport)
             await page.locator('select[name="catalog_id_1"]').select_option(
                 label="Agua Villamanaos 600cc · precio a completar"
             )

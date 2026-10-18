@@ -265,9 +265,39 @@ button:hover, .button:hover {
     margin-top: 1.5rem;
 }
 
-.actions.order-actions {
-    gap: 1.5rem;
+.order-add-actions {
     margin-top: 1.5rem;
+}
+
+.actions.order-actions {
+    gap: 1rem;
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #d8e0e8;
+}
+
+.order-actions .quiet {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 48px;
+}
+
+.actions.order-create {
+    justify-content: center;
+    margin: 1rem 0;
+}
+
+.order-create .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: min(100%, 22rem);
+    min-height: 56px;
+    padding: 1rem 1.5rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    text-align: center;
 }
 
 .actions, .inline {
@@ -562,7 +592,7 @@ footer {
     }
     .order-actions {
         flex-direction: column;
-        align-items: flex-start;
+        align-items: stretch;
     }
     .save-order {
         width: 100%;
