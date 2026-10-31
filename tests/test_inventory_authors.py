@@ -10,6 +10,22 @@ from order_manager.article_search import ArticleSearch
 from order_manager.seed_inventory import initial_inventory
 from order_manager.store import DomainError, Store
 from order_manager.web import articles_page, dashboard, journey_page, orders_page
+from test_order_navigation import editor, post
+from test_review_fixes import request
+
+
+def picker_html(store, query):
+    app = make_app(store.global_file)
+    status, headers, _ = post(app, {**editor(app), "action": "pick"})
+    assert status == 303
+    key = headers["location"].split("/")[-2]
+    status, headers, _ = request(app, "POST", "/ui/orders/articles", {
+        "editor_token": key, "action": "search", "search_q": query, "page_size": "5",
+    }, form=True)
+    assert status == 303
+    status, _, html = request(app, "GET", headers["location"])
+    assert status == 200
+    return html
 
 
 def asgi_json(app, method, path, payload=None):
@@ -201,7 +217,8 @@ def test_order_article_remains_in_inventory_and_keeps_history(tmp_path):
     )
     assert not temporary.get("temporary", False)
     assert temporary["unit_price"] == 1800
-    assert "Limonada de la casa · 1800" in orders_page(store, editor=True)
+    selection = picker_html(store, "Limonada de la casa")
+    assert "Limonada de la casa" in selection and "Precio unitario: 1800" in selection
     assert "Temporal de esta jornada" not in articles_page(
         store, search=ArticleSearch(query=line["name"]),
     )
@@ -304,6 +321,7 @@ def test_author_views_keep_orders_and_totals_separate(tmp_path):
     assert "Resultados por autor" in dashboard(store)
 
     grouped = orders_page(store)
-    assert "Órdenes por autor" in grouped
-    assert 'optgroup label="Cafetería / Infusiones"' in orders_page(store, editor=True)
-    assert "precio a completar" in orders_page(store, editor=True)
+    assert "Buscador de Órdenes" in grouped
+    selection = picker_html(store, "Cafe")
+    assert 'Cafetería · Infusiones' in selection
+    assert 'Precio a completar en la orden' in picker_html(store, "Agua Villamanaos 600cc")

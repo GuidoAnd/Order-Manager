@@ -168,7 +168,11 @@ async def check_order_browser(tmp_path, viewport):
                 "nodes => nodes.map(node => node.value)"
             ) == first
 
-            search = page.get_by_label("Buscar por número o autor")
+            assert await page.get_by_role("heading", name="Buscador de Órdenes").count() == 1
+            assert await page.locator(".order-search").count() == 1
+            criterion = page.get_by_label("Buscar por", exact=True)
+            await criterion.select_option("id")
+            search = page.get_by_label("Texto de búsqueda")
             await search.fill("90")
             await page.locator(".order-search").get_by_role("button", name="Buscar").click()
             assert await rows.count() == 1
@@ -177,6 +181,12 @@ async def check_order_browser(tmp_path, viewport):
             await rows.locator(".order-actions-menu summary").click()
             await rows.get_by_role("button", name="Editar orden").click()
             assert await page.locator('input[type="hidden"][name="q"]').input_value() == "90"
+            assert await page.locator('input[type="hidden"][name="search_by"]').input_value() == "id"
+            await page.get_by_role("link", name="Cancelar", exact=True).click()
+            assert await criterion.input_value() == "id"
+            assert await rows.count() == 1
+            await rows.locator(".order-actions-menu summary").click()
+            await rows.get_by_role("button", name="Editar orden").click()
             editor = page.locator("#order-editor")
             await page.get_by_label("Serie", exact=True).select_option("10")
             await page.get_by_label("Numeración", exact=True).fill("001")
@@ -196,13 +206,21 @@ async def check_order_browser(tmp_path, viewport):
             assert await views.get_by_text("No hay órdenes que coincidan").is_visible()
             await page.get_by_role("link", name="Limpiar búsqueda").click()
             assert await rows.count() == size
+            await criterion.select_option("author")
             await search.fill("JOSE")
             await page.locator(".order-search").get_by_role("button", name="Buscar").click()
             assert await rows.count() == 5
             assert await rows.locator('td[data-label="Autor"]').all_text_contents() == ["José"] * 5
             await views.get_by_role("link", name="Siguiente").click()
             assert await search.input_value() == "JOSE"
+            assert await criterion.input_value() == "author"
+            await criterion.select_option("serial")
+            await search.fill("001")
+            await page.locator(".order-search").get_by_role("button", name="Buscar").click()
+            assert await criterion.input_value() == "serial"
+            assert await rows.count() == 0
             await assert_layout(page, viewport)
+            assert (await criterion.bounding_box())["height"] >= 44
             for control in await page.locator(".order-search button, .order-search a, .pagination:visible a").all():
                 assert (await control.bounding_box())["height"] >= 44
         finally:

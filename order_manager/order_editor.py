@@ -134,10 +134,11 @@ def register_order_editor(app, store, fields, notices):
             order_status=values.get("order_status"), series=values.get("series"),
             serial_number=values.get("serial_number"),
             page=values.get("page", 1), article_id=values.get("article", ""),
-            query=values.get("q", ""), editor_token=key, editor_context=session["context"],
+            query=values.get("q", ""), search_by=values.get("search_by", "all"),
+            editor_token=key, editor_context=session["context"],
         ), status_code=entry["status"])
 
-    def start(order_id, page, article, q):
+    def start(order_id, page, article, q, search_by):
         with drafts.lock, store.lock:
             journey = store.get_journey()
             if not journey:
@@ -151,16 +152,18 @@ def register_order_editor(app, store, fields, notices):
                                            "orders": [order] if order else []},
                                "inventory": store.get_order_inventory(order_id),
                            })
-            key = drafts.put(session, dict(page=page, article=article, q=q))
+            key = drafts.put(session, dict(page=page, article=article, q=q, search_by=search_by))
             return render_draft(key)
 
     @app.get("/ordenes/nueva", response_class=HTMLResponse)
-    def new_order(page: int = Query(default=1, ge=1), article: str = "", q: str = ""):
-        return start("", page, article, q)
+    def new_order(page: int = Query(default=1, ge=1), article: str = "", q: str = "",
+                  search_by: str = "all"):
+        return start("", page, article, q, search_by)
 
     @app.get("/ordenes/{order_id}/editar", response_class=HTMLResponse)
-    def edit_order(order_id: str, page: int = Query(default=1, ge=1), article: str = "", q: str = ""):
-        return start(order_id, page, article, q)
+    def edit_order(order_id: str, page: int = Query(default=1, ge=1), article: str = "", q: str = "",
+                  search_by: str = "all"):
+        return start(order_id, page, article, q, search_by)
 
     @app.get("/ordenes/borrador/{draft_id}")
     def draft_page(draft_id: str):
@@ -222,7 +225,8 @@ def register_order_editor(app, store, fields, notices):
                         session["order_id"] or None, status=values.get("order_status", "sale"),
                         series=values.get("series", ""), serial_number=values.get("serial_number", ""),
                     )
-                    target = web.orders_url(page, values.get("article", ""), values.get("q", "")) + "#order-results"
+                    target = web.orders_url(page, values.get("article", ""), values.get("q", ""),
+                                            values.get("search_by", "all")) + "#order-results"
                     code = "order_updated" if session["order_id"] else "order_created"
                     session["result"] = notices.url(target, code, **order_details(order, journey))
                     return RedirectResponse(session["result"], status_code=303)

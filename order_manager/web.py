@@ -342,6 +342,7 @@ def _order_line(index: int, row: dict, catalog: list[dict], inventory: dict) -> 
 
 def _order_row(
     order: dict, authors: dict[str, str], page: int, article_id: str, query: str,
+    search_by: str = "all",
 ) -> str:
     details = ", ".join(
         f'{line["name"]} × {line["quantity"]}'
@@ -352,7 +353,7 @@ def _order_row(
     total = h(order["total"]) if is_sale(order) else "Sin importe"
     return render(
         'web/order_row.html',
-        editor_url=order_editor_url(order['id'], page, article_id, query),
+        editor_url=order_editor_url(order['id'], page, article_id, query, search_by),
         serial_label=serial_label(order),
         order_number=order['number'],
         status_label=status_label,
@@ -360,24 +361,28 @@ def _order_row(
         details=details,
         total=total,
         order_number_2=order['number'],
-        order_list_fields_page_article_id_query=_order_list_fields(page, article_id, query),
+        order_list_fields_page_article_id_query=_order_list_fields(page, article_id, query, search_by),
         order_id=order['id'],
-        order_list_fields_page_article_id_query_2=_order_list_fields(page, article_id, query),
+        order_list_fields_page_article_id_query_2=_order_list_fields(page, article_id, query, search_by),
         order_id_2=order['id'],
     )
 
 
-def _order_list_fields(page: int, article_id: str, query: str) -> str:
-    return component("hidden_fields", {"page": page, "article": article_id, "q": query})
+def _order_list_fields(page: int, article_id: str, query: str, search_by: str = "all") -> str:
+    return component("hidden_fields", {
+        "page": page, "article": article_id, "q": query, "search_by": search_by,
+    })
 
 
-def order_editor_url(edit_id: str = "", page: int = 1, article_id: str = "", query: str = "") -> str:
+def order_editor_url(edit_id: str = "", page: int = 1, article_id: str = "", query: str = "",
+                     search_by: str = "all") -> str:
     path = f"/ordenes/{edit_id}/editar" if edit_id else "/ordenes/nueva"
-    return path + "?" + urlencode({"page": page, "article": article_id, "q": query})
+    return path + "?" + urlencode({"page": page, "article": article_id, "q": query, "search_by": search_by})
 
 
-def orders_url(page: int = 1, article_id: str = "", query: str = "") -> str:
-    return "/ordenes?" + urlencode({"page": page, "article": article_id, "q": query})
+def orders_url(page: int = 1, article_id: str = "", query: str = "",
+               search_by: str = "all") -> str:
+    return "/ordenes?" + urlencode({"page": page, "article": article_id, "q": query, "search_by": search_by})
 
 
 def _shared_order_pages(orders: list[dict], authors: list[dict], size: int) -> list[list[dict]]:
@@ -402,7 +407,7 @@ def _shared_order_pages(orders: list[dict], authors: list[dict], size: int) -> l
 
 def _order_results(
     orders: list[dict], authors: list[dict], page: int, article_id: str,
-    query: str, size: int,
+    query: str, size: int, search_by: str = "all",
 ) -> str:
     total = len(orders)
     if query.strip():
@@ -420,7 +425,7 @@ def _order_results(
         if not author_orders:
             continue
         rows = "\n".join(
-            _order_row(order, names, page, article_id, query) for order in author_orders
+            _order_row(order, names, page, article_id, query, search_by) for order in author_orders
         )
         sections.append(render(
             'web/order_results.html',
@@ -435,11 +440,11 @@ def _order_results(
     links = []
     if page > 1:
         links.append(
-            f'<a class="button" href="{h(orders_url(page - 1, article_id, query))}#order-results">Anterior</a>'
+            f'<a class="button" href="{h(orders_url(page - 1, article_id, query, search_by))}#order-results">Anterior</a>'
         )
     if page < pages:
         links.append(
-            f'<a class="button quiet" href="{h(orders_url(page + 1, article_id, query))}#order-results">Siguiente</a>'
+            f'<a class="button quiet" href="{h(orders_url(page + 1, article_id, query, search_by))}#order-results">Siguiente</a>'
         )
     label = "orden" if total == 1 else "órdenes"
     return render(
@@ -473,7 +478,9 @@ def orders_page(
     order_status: str | None = None, *, editor: bool = False,
     series: str | None = None, serial_number: object = None,
     editor_token: str = "", editor_context: dict | None = None,
+    search_by: str = "all",
 ) -> str:
+    search_by = search_by if search_by in {"all", "author", "id", "serial"} else "all"
     journey = editor_context["journey"] if editor_context else store.get_journey()
     if not journey:
         message = '<p>Primero <a href="/jornada">crea una jornada</a>.</p>'
@@ -514,8 +521,9 @@ def orders_page(
         body = render(
             'web/order_editor.html',
             form_title=form_title,
+            cancel_url=orders_url(page, article_id, query, search_by) + "#order-results",
             editor_token=editor_token,
-            list_fields=_order_list_fields(page, article_id, query),
+            list_fields=_order_list_fields(page, article_id, query, search_by),
             line_count=len(rows),
             edit_id=edit_id,
             author_options=author_options,
@@ -557,19 +565,29 @@ def orders_page(
     if search_query:
         names = {author["id"]: author["name"] for author in journey["authors"]}
         number = search_query.removeprefix("#").strip()
-        visible_orders = [
-            order for order in visible_orders
-            if (
-                (number.isdecimal() and (str(order["number"]) == number
-                 or (not search_query.startswith("#") and order.get("serial_number") == int(number))))
-                or (not search_query.startswith("#")
-                    and search_query in searchable(names.get(order["author_id"], "")))
+        numeric = number.isascii() and number.isdecimal()
+        normalized_number = number.lstrip("0") or "0"
+
+        def matches(order):
+            order_id_match = (
+                (numeric and normalized_number == str(order["number"]))
+                or search_query == order["id"].lower()
             )
-        ]
+            serial_match = numeric and normalized_number == str(order.get("serial_number"))
+            author_match = search_query in searchable(names.get(order["author_id"], ""))
+            if search_by == "id":
+                return order_id_match
+            if search_by == "serial":
+                return not search_query.startswith("#") and serial_match
+            if search_by == "author":
+                return author_match
+            return order_id_match or (not search_query.startswith("#") and (serial_match or author_match))
+
+        visible_orders = [order for order in visible_orders if matches(order)]
     visible_orders = sorted(visible_orders, key=lambda order: order["number"])
     sizes = (5,) if search_query else (5, 4, 3, 2)
     grouped_orders = "\n".join(
-        _order_results(visible_orders, journey["authors"], page, article_id, query, size)
+        _order_results(visible_orders, journey["authors"], page, article_id, query, size, search_by)
         for size in sizes
     )
     body = render(
@@ -577,9 +595,10 @@ def orders_page(
         filter_notice=filter_notice,
         article_id=article_id,
         query=query,
+        search_by=search_by,
         orders_url_article_id_article_id=orders_url(article_id=article_id),
         grouped_orders=grouped_orders,
-        new_order_url=order_editor_url('', page, article_id, query),
+        new_order_url=order_editor_url('', page, article_id, query, search_by),
     )
     styles = render(
         'web/order_search_styles.html',

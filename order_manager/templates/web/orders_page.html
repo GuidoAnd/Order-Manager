@@ -2,14 +2,23 @@
     <a class="button add-article" href="{{ new_order_url }}">Agregar nueva orden</a>
 </div>
 <section class="panel">
-        <h2>Órdenes por autor</h2>
+        <h2>Buscador de Órdenes</h2>
         {{ filter_notice | safe }}
         <form class="order-search" method="get" action="/ordenes#order-results">
             <input type="hidden" name="article" value="{{ article_id }}">
-            <label>Buscar por número o autor
-                <input type="search" name="q" value="{{ query }}"
-                       placeholder="90, #90 o nombre del autor">
+            <label>Buscar por
+                <select name="search_by" aria-label="Buscar por">
+                    <option value="all"{% if search_by == 'all' %} selected{% endif %}>Todos los criterios</option>
+                    <option value="author"{% if search_by == 'author' %} selected{% endif %}>Autor</option>
+                    <option value="id"{% if search_by == 'id' %} selected{% endif %}>ID automático</option>
+                    <option value="serial"{% if search_by == 'serial' %} selected{% endif %}>Numeración</option>
+                </select>
             </label>
+            <label>Texto de búsqueda
+                <input type="search" name="q" value="{{ query }}"
+                       placeholder="Nombre, #90 o 005" aria-describedby="order-search-help">
+            </label>
+            <p id="order-search-help">ID automático: #90. Numeración manual: 005.</p>
             <div class="actions">
                 <button type="submit">Buscar</button>
                 <a class="button quiet" href="{{ orders_url_article_id_article_id }}#order-results">

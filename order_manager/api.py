@@ -300,10 +300,11 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
     @app.get("/ordenes", response_class=HTMLResponse)
     def orders_page(
         edit: str = "", article: str = "", page: int = Query(default=1, ge=1), q: str = "",
+        search_by: str = "all",
     ):
         if edit:
-            return RedirectResponse(web.order_editor_url(edit, page, article, q), status_code=303)
-        return web.orders_page(store, article_id=article, page=page, query=q)
+            return RedirectResponse(web.order_editor_url(edit, page, article, q, search_by), status_code=303)
+        return web.orders_page(store, article_id=article, page=page, query=q, search_by=search_by)
 
     @app.get("/articulos", response_class=HTMLResponse)
     def articles_page(
@@ -460,7 +461,7 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
             page = 1
         return {
             "page": page, "article_id": values.get("article", ""),
-            "query": values.get("q", ""),
+            "query": values.get("q", ""), "search_by": values.get("search_by", "all"),
         }
 
     @app.post("/ui/orders/delete")

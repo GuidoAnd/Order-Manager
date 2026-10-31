@@ -376,7 +376,7 @@ button:hover, .button:hover {
 }
 
 .article-search button, .article-search .button,
-.order-search button, .order-search .button,
+.order-search button, .order-search .button, .order-search select, .order-search input,
 .pagination .button, .responsive-table button, .responsive-table .button {
     min-height: 44px;
 }

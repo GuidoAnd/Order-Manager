@@ -121,10 +121,11 @@ def test_list_editor_routes_and_cancel_do_not_mutate(app):
     before = store._state()
     list_html = request(app, "GET", "/ordenes")[2]
     assert "Agregar nueva orden" in list_html and 'id="order-editor"' not in list_html
-    assert list_html.index("Agregar nueva orden") < list_html.index("Órdenes por autor")
+    assert list_html.index("Agregar nueva orden") < list_html.index("Buscador de Órdenes")
     new_html = request(app, "GET", "/ordenes/nueva?page=2&q=Ana")[2]
     assert 'id="order-editor"' in new_html and 'id="order-results"' not in new_html
-    assert 'href="/">Cancelar' in new_html and 'name="q" value="Ana"' in new_html
+    assert 'search_by=all#order-results">Cancelar' in new_html
+    assert 'name="q" value="Ana"' in new_html
     edit_html = request(app, "GET", f"/ordenes/{order['id']}/editar")[2]
     assert 'value="10" selected' in edit_html and 'value="5"' in edit_html
     assert store._state() == before
@@ -219,7 +220,7 @@ def test_new_interfaces_manual_edit_cancel_and_layout(tmp_path, viewport):
                 await page.get_by_role("link", name="Agregar nueva orden").click()
                 assert await page.get_by_label("Numeración", exact=True).input_value() == ""
                 await page.get_by_role("link", name="Cancelar", exact=True).click()
-                assert await page.get_by_role("heading", name="Dashboard", exact=True).is_visible()
+                assert await page.get_by_role("heading", name="Buscador de Órdenes", exact=True).is_visible()
                 assert len(store.get_journey()["orders"]) == 1
             finally:
                 await browser.close()

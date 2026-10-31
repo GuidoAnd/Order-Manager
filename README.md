@@ -11,6 +11,7 @@ La aplicación está planteada con FastAPI y Uvicorn y una interfaz HTML/CSS. La
 | v0.1 | Implementada | Módulos integrados de jornadas, autores, órdenes, artículos, ventas y estadísticas. |
 | v0.2 | Implementada; revisión final documentada | Inventario persistente, resultados por autor, interfaz móvil paginada, órdenes no facturadas y exportación JSON, dos CSV o ZIP. |
 | v0.3 | Implementada; cierre documentado | Persistencia por acción, rollback y logging configurable; healthcheck, seguridad local y frontend Jinja2; empaquetado Docker multiarquitectura. |
+| v0.3.1 | En desarrollo | Correcciones del editor y mejoras de selección de artículos, avisos y búsqueda de órdenes. |
 | v1.0 | Planificada | Versión final prevista del MVP. |
 
 La versión actual es v0.3; la API expone `0.3`. Su cierre se documentó el

@@ -47,7 +47,7 @@ async def check_shared_page(tmp_path, viewport):
             assert await rows.count() == size
             assert await rows.locator('td[data-label="Autor"]').all_text_contents() == ["90 aa"] * size
 
-            search = page.get_by_label("Buscar por número o autor")
+            search = page.get_by_label("Texto de búsqueda")
             await search.fill("90")
             await page.locator(".order-search").get_by_role("button", name="Buscar", exact=True).click()
             assert await rows.count() == 5
