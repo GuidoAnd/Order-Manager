@@ -504,8 +504,9 @@ def orders_page(
     query: str = "",
     order_status: str | None = None, *, editor: bool = False,
     series: str | None = None, serial_number: object = None,
+    editor_token: str = "", editor_context: dict | None = None,
 ) -> str:
-    journey = store.get_journey()
+    journey = editor_context["journey"] if editor_context else store.get_journey()
     if not journey:
         message = '<p>Primero <a href="/jornada">crea una jornada</a>.</p>'
         return layout("Órdenes", alert(error) + message)
@@ -534,8 +535,9 @@ def orders_page(
 
     if editor:
         author_options = component("author_options", journey["authors"], author_id)
-        available_articles = store.get_available_articles()
-        inventory = store.get_order_inventory(selected_order["id"] if selected_order else "")
+        inventory = (editor_context["inventory"] if editor_context else
+                     store.get_order_inventory(selected_order["id"] if selected_order else ""))
+        available_articles = inventory["articles"]
         line_cards = "\n".join(
             _order_line(index, row, available_articles, inventory)
             for index, row in enumerate(rows)
@@ -544,6 +546,7 @@ def orders_page(
         body = render(
             'web/order_editor.html',
             form_title=form_title,
+            editor_token=editor_token,
             list_fields=_order_list_fields(page, article_id, query),
             line_count=len(rows),
             edit_id=edit_id,
