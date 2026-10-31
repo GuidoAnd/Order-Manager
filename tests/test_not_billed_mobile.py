@@ -9,7 +9,7 @@ import pytest
 from playwright.async_api import async_playwright
 
 from order_manager.api import make_app
-from test_mobile import VIEWPORTS, assert_layout, serve_asgi
+from test_mobile import choose_order_article, VIEWPORTS, assert_layout, serve_asgi
 
 
 async def check_not_billed(tmp_path, viewport):
@@ -47,7 +47,7 @@ async def check_not_billed(tmp_path, viewport):
             assert await page.get_by_role("alert").is_visible()
             assert await not_billed.is_checked()
             assert len(store.get_journey()["orders"]) == 1
-            await editor.locator('select[name="catalog_id_0"]').select_option(pending["id"])
+            await choose_order_article(page, 0, pending["name"])
             await editor.locator('input[name="quantity_0"]').fill("3")
             await editor.get_by_role("button", name="Agregar artículo").click()
             assert await not_billed.is_checked()

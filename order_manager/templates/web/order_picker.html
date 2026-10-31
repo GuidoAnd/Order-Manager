@@ -1,0 +1,77 @@
+<section class="panel" id="order-picker">
+    <h2>{% if picker.target is none %}Elegir artículos{% else %}Cambiar artículo {{ picker.target + 1 }}{% endif %}</h2>
+    <p>Marca los artículos e indica las cantidades. Buscar o cambiar de página conserva tu selección.
+       La orden se guarda después, desde el editor.</p>
+    <p>Seleccionados en el último envío: <strong>{{ picker.selected | length }}</strong>.
+       Las casillas que marques ahora se incorporan al pulsar un botón.</p>
+    {% if error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+    {% for group in groups %}
+    <form class="picker-page picker-page-{{ group.size }}" action="{{ path }}" method="post" novalidate>
+        <input type="hidden" name="editor_token" value="{{ token }}">
+        <input type="hidden" name="page_size" value="{{ group.size }}">
+        <div class="picker-filters">
+            <label>Buscar por nombre
+                <input type="search" name="search_q" value="{{ picker.query }}">
+            </label>
+            <label>Categoría
+                <select name="category">
+                    <option value="">Todas las categorías</option>
+                    {% for category in inventory.categories %}
+                    <option value="{{ category.name }}"{% if picker.category == category.name %} selected{% endif %}>{{ category.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>Subcategoría
+                <select name="subcategory">
+                    <option value="">Todas las subcategorías</option>
+                    {% for subcategory in inventory.subcategories %}
+                    <option value="{{ subcategory.name }}"{% if picker.subcategory == subcategory.name %} selected{% endif %}>{{ subcategory.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <button name="action" value="search">Buscar</button>
+        </div>
+        <p role="status">{{ group.total }} resultados · Página {{ group.page }} de {{ group.pages }}</p>
+        <div class="picker-cards">
+            {% for article in group.articles %}
+            <fieldset class="picker-card">
+                <legend>{{ article.name }}</legend>
+                <p>{{ article.category }} · {{ article.subcategory }}</p>
+                <p>{% if article.unit_price is none %}Precio a completar en la orden{% else %}Precio unitario: {{ article.unit_price }}{% endif %}</p>
+                <label class="picker-choice">
+                    {% if picker.target is none %}
+                    <input type="checkbox" name="selected_{{ article.id }}" value="1"{% if article.id in picker.selected %} checked{% endif %}>
+                    {% else %}
+                    <input type="radio" name="selected_id" value="{{ article.id }}"{% if article.id in picker.selected %} checked{% endif %}>
+                    {% endif %}
+                    Seleccionar {{ article.name }}
+                </label>
+                <label>Cantidad de {{ article.name }}
+                    <input type="number" min="1" max="{{ max_quantity }}" step="1" name="amount_{{ article.id }}" value="{{ picker.selected.get(article.id, '1') }}">
+                </label>
+            </fieldset>
+            {% else %}<p>No hay artículos que coincidan con la búsqueda.</p>{% endfor %}
+        </div>
+        <nav class="pagination" aria-label="Páginas de selección">
+            {% if group.page > 1 %}<button name="action" value="previous">Anterior</button>{% endif %}
+            {% if group.page < group.pages %}<button class="quiet" name="action" value="next">Siguiente</button>{% endif %}
+        </nav>
+        {% if picker.selected %}
+        <details class="picker-summary">
+            <summary>Revisar selección guardada ({{ picker.selected | length }})</summary>
+            <ul>
+                {% for article_id, amount in picker.selected.items() %}
+                <li>{{ names.get(article_id, 'Artículo no disponible') }} × {{ amount }}
+                    <button class="danger" name="action" value="unpick_{{ article_id }}">Quitar {{ names.get(article_id, 'artículo') }}</button>
+                </li>
+                {% endfor %}
+            </ul>
+        </details>
+        {% endif %}
+        <div class="actions picker-actions">
+            <button name="action" value="apply">{% if picker.target is none %}Agregar seleccionados{% else %}Usar artículo seleccionado{% endif %}</button>
+            <a class="button quiet" href="/ordenes/borrador/{{ token }}">Volver sin aplicar selección</a>
+        </div>
+    </form>
+    {% endfor %}
+</section>

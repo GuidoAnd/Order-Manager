@@ -184,7 +184,7 @@ def test_memory_limit_rejects_excess_without_touching_orders(app):
 def test_browser_back_to_draft_never_replays_save(app, viewport):
     import asyncio
     from playwright.async_api import async_playwright
-    from test_mobile import assert_layout, serve_asgi
+    from test_mobile import assert_layout, serve_asgi, choose_order_article
 
     order = create(app)
     async def run():
@@ -205,15 +205,16 @@ def test_browser_back_to_draft_never_replays_save(app, viewport):
             await page.goto(f"http://127.0.0.1/ordenes/{order['id']}/editar")
             await page.locator('[name=quantity_0]').fill('2')
             await page.get_by_role('button', name='Agregar artículo', exact=True).click()
+            catalog = await page.locator('[name=catalog_id_0]').input_value()
+            name = next(a['name'] for a in app.state.store.get_order_inventory(order['id'])['articles'] if a['id'] == catalog)
+            await choose_order_article(page, 1, name)
+            await page.locator('[name=quantity_1]').fill('1')
             key = await page.locator('[name=editor_token]').input_value()
             # El adaptador sigue 303 internamente. Abrir explícitamente su GET
             # permite probar historial GET sin fingir una redirección de red.
             await page.goto('http://127.0.0.1/ordenes/borrador/' + key)
             assert await page.locator('[name=quantity_0]').input_value() == '2'
             await assert_layout(page, viewport)
-            catalog = await page.locator('[name=catalog_id_0]').input_value()
-            await page.locator('[name=catalog_id_1]').select_option(catalog)
-            await page.locator('[name=quantity_1]').fill('1')
             await page.get_by_role('button', name='Guardar orden', exact=True).click()
             await page.locator('#order-results').wait_for()
             before = confirmed(app)

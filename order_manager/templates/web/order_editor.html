@@ -1,6 +1,6 @@
 <section class="panel" id="order-editor">
         <h2>{{ form_title }}</h2>
-        <p>Selecciona artículos del inventario y agrega varias líneas, por ejemplo
+        <p>Elige uno o varios artículos del inventario e indica sus cantidades, por ejemplo
            Café × 3. Completa el precio cuando el artículo no lo tenga definido.
            El total de una venta se calcula al guardar.</p>
         <form class="order-form" method="post" action="/ui/orders/form" novalidate>
@@ -43,6 +43,9 @@
                 <p class="not-billed-note">Conserva artículos y cantidades, sin importe.
                    No suma ventas ni unidades a las estadísticas.</p>
             </fieldset>
+            <div class="actions">
+                <button name="action" value="pick">Elegir artículos del inventario</button>
+            </div>
             {{ line_cards | safe }}
             <div class="actions order-add-actions">
                 <button class="add-article order-secondary" name="action" value="add">

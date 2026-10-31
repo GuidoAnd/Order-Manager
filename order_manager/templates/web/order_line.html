@@ -13,12 +13,15 @@
                    value="new"{{ new_checked | safe }}>
             <label for="new_{{ index_7 | safe }}">Nuevo producto</label>
             <div class="inventory-fields">
-                <label>Elegir del inventario
-                    <select name="catalog_id_{{ index_8 | safe }}">
-                        <option value="">Seleccionar artículo</option>
-                        {{ catalog_options | safe }}
-                    </select>
-                </label>
+                <input type="hidden" name="catalog_id_{{ index }}" value="{{ selected_id }}">
+                <p class="chosen-article">{% if selected_article %}
+                    <strong>{{ selected_article.name }}</strong><br>
+                    {{ selected_article.category }} · {{ selected_article.subcategory }}<br>
+                    {% if selected_article.unit_price is not none %}Precio de referencia: {{ selected_article.unit_price }}{% else %}Precio a completar{% endif %}
+                    {% else %}Sin artículo seleccionado{% endif %}</p>
+                <button class="quiet" name="action" value="pick_{{ index }}">
+                    {% if selected_article %}Cambiar artículo{% else %}Buscar artículo{% endif %}
+                </button>
                 <label class="line-price">Precio unitario (completar si falta o editar una orden)
                     <input name="unit_price_{{ index_9 | safe }}" type="number" min="0" step="1"
                            value="{{ inventory_price | safe }}">

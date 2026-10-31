@@ -14,7 +14,7 @@ from order_manager.state_validation import validate_state
 from order_manager.store import DomainError, Store
 from order_manager.templating import ENVIRONMENT
 from order_manager import web
-from test_mobile import VIEWPORTS, assert_layout, serve_asgi
+from test_mobile import VIEWPORTS, assert_layout, serve_asgi, choose_order_article
 from test_review_fixes import request
 from test_security import exchange, token
 
@@ -199,7 +199,7 @@ def test_new_interfaces_manual_edit_cancel_and_layout(tmp_path, viewport):
                 await page.get_by_label("Autor", exact=True).select_option(author["id"])
                 await page.get_by_label("Serie", exact=True).select_option("20")
                 await page.get_by_label("Numeración", exact=True).fill("005")
-                await page.locator('select[name="catalog_id_0"]').select_option(article["id"])
+                await choose_order_article(page, 0, article["name"])
                 await page.locator('input[name="quantity_0"]').fill("2")
                 await page.locator('input[name="unit_price_0"]').fill("10")
                 await page.get_by_role("button", name="Guardar orden").click()

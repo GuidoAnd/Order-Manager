@@ -237,40 +237,6 @@ def journey_page(
     return layout("Jornada", alert(error) + body + recovery_button(store), journey_results.responsive_styles())
 
 
-def _catalog_option(article: dict, selected_id: str) -> str:
-    selected = " selected" if article["id"] == selected_id else ""
-    price = article["unit_price"]
-    price_label = "precio a completar" if price is None else str(price)
-    temporary_label = " · de esta jornada" if article.get("temporary") else ""
-    return (
-        f'<option value="{h(article["id"])}"{selected}>'
-        f'{h(article["name"])} · {h(price_label)}{h(temporary_label)}</option>'
-    )
-
-
-def _catalog_options(catalog: list[dict], selected_id: str) -> str:
-    options = []
-    current_group = None
-    for article in sorted(
-        catalog,
-        key=lambda item: (
-            item["category"].casefold(),
-            item["subcategory"].casefold(),
-            item["name"].casefold(),
-        ),
-    ):
-        group = (article["category"], article["subcategory"])
-        if group != current_group:
-            if current_group is not None:
-                options.append("</optgroup>")
-            options.append(f'<optgroup label="{h(" / ".join(group))}">')
-            current_group = group
-        options.append(_catalog_option(article, selected_id))
-    if current_group is not None:
-        options.append("</optgroup>")
-    return "\n".join(options)
-
-
 def _taxonomy_fields(index: int | str, row: dict, inventory: dict) -> str:
     category_options = []
     subcategory_fields = []
@@ -341,7 +307,7 @@ def _order_line(index: int, row: dict, catalog: list[dict], inventory: dict) -> 
         article["id"] == selected_id for article in catalog
     ):
         catalog = [*catalog, {**row, "id": selected_id}]
-    catalog_options = _catalog_options(catalog, selected_id)
+    selected_article = next((article for article in catalog if article["id"] == selected_id), None)
     quantity = value("quantity") or "1"
     source = row.get("source", "inventory" if selected_id else (
         "new" if row.get("name") else "inventory"
@@ -363,8 +329,8 @@ def _order_line(index: int, row: dict, catalog: list[dict], inventory: dict) -> 
         index_6=index,
         new_checked=new_checked,
         index_7=index,
-        index_8=index,
-        catalog_options=catalog_options,
+        selected_id=selected_id,
+        selected_article=selected_article,
         index_9=index,
         inventory_price=inventory_price,
         new_article_fields_index_row_inventory=_new_article_fields(index, row, inventory),

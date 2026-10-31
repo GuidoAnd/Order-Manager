@@ -75,6 +75,19 @@ async def serve_asgi(app, route):
     )
 
 
+async def choose_order_article(page, index, name):
+    """Elige una referencia mediante el buscador HTML del editor."""
+    line = page.locator(".order-line").nth(index)
+    await line.get_by_role("button", name="Buscar artículo", exact=True).or_(
+        line.get_by_role("button", name="Cambiar artículo", exact=True)
+    ).click()
+    form = page.locator(".picker-page:visible")
+    await form.get_by_role("searchbox").fill(name)
+    await form.get_by_role("button", name="Buscar", exact=True).click()
+    await form.get_by_role("radio", name="Seleccionar " + name, exact=True).check()
+    await form.get_by_role("button", name="Usar artículo seleccionado", exact=True).click()
+
+
 async def navigate_section(page, name):
     menu = page.locator(".mobile-navigation")
     if await menu.is_visible() and await menu.get_attribute("open") is None:
@@ -188,17 +201,13 @@ async def run_mobile_workflow(tmp_path, viewport):
             await assert_layout(page, viewport)
             await assert_order_buttons(page, viewport)
             await page.locator('select[name="author_id"]').select_option(label="Ana")
-            await page.locator('select[name="catalog_id_0"]').select_option(
-                label="Cafe · 2800"
-            )
+            await choose_order_article(page, 0, "Cafe")
             await page.locator('input[name="quantity_0"]').fill("3")
             await page.get_by_role("button", name="Agregar artículo").click()
             assert await page.locator(".order-line").count() == 2
             await assert_layout(page, viewport)
             await assert_order_buttons(page, viewport)
-            await page.locator('select[name="catalog_id_1"]').select_option(
-                label="Agua Villamanaos 600cc · precio a completar"
-            )
+            await choose_order_article(page, 1, "Agua Villamanaos 600cc")
             await page.locator('input[name="quantity_1"]').fill("2")
             await page.locator('input[name="unit_price_1"]').fill("2500")
             await page.get_by_role("button", name="Guardar orden").click()
@@ -312,13 +321,11 @@ async def run_mobile_workflow(tmp_path, viewport):
             await page.get_by_label("Serie", exact=True).select_option("10")
             await page.get_by_label("Numeración", exact=True).fill("001")
             await page.locator('select[name="author_id"]').select_option(label="Ana")
-            await page.locator('select[name="catalog_id_0"]').select_option(
-                label="Agua Villamanaos 600cc · precio a completar"
-            )
+            await choose_order_article(page, 0, "Agua Villamanaos 600cc")
             await page.locator('input[name="unit_price_0"]').fill("2500")
             await page.locator('input[name="quantity_0"]').fill("3")
             await page.get_by_role("radio", name="Nuevo producto").check()
-            assert not await page.locator('select[name="catalog_id_0"]').is_visible()
+            assert not await page.locator('.inventory-fields').first.is_visible()
             assert await page.locator('input[name="new_unit_price_0"]').input_value() == ""
             await page.locator('input[name="name_0"]').fill("Agua de los cielos")
             await page.locator('input[name="new_unit_price_0"]').fill("900")

@@ -12,6 +12,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from . import web
 from .store import DomainError
+from .order_picker import register_order_picker
 
 
 class EditorDrafts:
@@ -28,10 +29,13 @@ class EditorDrafts:
             if monotonic() - entry["session"]["created"] >= self.lifetime:
                 del self.entries[key]
 
-    def put(self, session, values, rows=None, error="", status=200):
+    def put(self, session, values, rows=None, error="", status=200, *, picker=None):
         self._expire()
         entry = dict(session=session, values=deepcopy(values), rows=deepcopy(rows),
                      error=error, status=status)
+        if picker is not None:
+            entry["picker"] = deepcopy(picker)
+            entry["picker"]["flow"] = picker["flow"]
         size = len(json.dumps(entry, ensure_ascii=True).encode())
         if size > self.max_bytes:
             raise DomainError("El borrador excede el tamaño permitido.", 413)
@@ -112,6 +116,7 @@ def order_form_lines(rows: list[dict], inventory: dict) -> list[dict]:
 def register_order_editor(app, store, fields):
     drafts = EditorDrafts()
     app.state.order_drafts = drafts
+    open_picker = register_order_picker(app, store, fields, drafts)
 
     def redirect_draft(session, values, rows=None, error="", status=200):
         key = drafts.put(session, values, rows, error, status)
@@ -189,6 +194,11 @@ def register_order_editor(app, store, fields):
                 if not journey or journey["id"] != session["journey_id"]:
                     raise DomainError("La jornada cambió. El borrador no se guardó.", 409)
                 action = values.get("action", "")
+                if action == "pick" or action.startswith("pick_"):
+                    target = None if action == "pick" else int(action.split("_", 1)[1])
+                    if target is not None and not 0 <= target < len(rows):
+                        raise DomainError("Artículo no válido.")
+                    return open_picker(session, values, rows, target)
                 if action == "add":
                     if len(rows) == 50:
                         raise DomainError("La orden admite hasta 50 líneas.")

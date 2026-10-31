@@ -132,7 +132,8 @@ def test_order_validation_retains_form_and_retry_does_not_duplicate(active_app, 
     assert page.count('<fieldset class="order-line">') == 2
     assert f'name="order_id" value="{order_id}"' in page
     assert f'<option value="{author["id"]}" selected>' in page
-    assert f'<option value="{coffee["id"]}" selected>' in page
+    assert f'name="catalog_id_0" value="{coffee["id"]}"' in page
+    assert f'<strong>{coffee["name"]}</strong>' in page
     assert 'name="name_1" value="Especial"' in page
     assert "<h2>Editar orden</h2>" in page if editing else "<h2>Crear orden</h2>" in page
     assert store.get_journey() == before
