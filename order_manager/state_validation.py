@@ -62,6 +62,21 @@ def journey(data: dict | None) -> None:
     authors = unique(data["authors"])
     require(all(text(a["name"]) for a in data["authors"]))
     require(len({a["name"].casefold() for a in data["authors"]}) == len(authors))
+    batch_ids = set()
+    batches_by_author = {}
+    for author in data["authors"]:
+        batches = author.get("batches", [])
+        ids = unique(batches)
+        require(not batch_ids.intersection(ids))
+        batch_ids.update(ids)
+        require([b["number"] for b in batches] == list(range(1, len(batches) + 1)))
+        require(sum(b["closed_at"] is None for b in batches) <= 1)
+        for batch in batches:
+            require(type(batch["number"]) is int)
+            require(batch["series"] in {"10", "20"} and text(batch["opened_at"]))
+            require(batch["closed_at"] is None or text(batch["closed_at"]))
+        require(not any(b["closed_at"] is None for b in batches[:-1]))
+        batches_by_author[author["id"]] = {b["id"]: b for b in batches}
     unique(data["articles"])
     for item in data["articles"]:
         article(item)
@@ -74,6 +89,9 @@ def journey(data: dict | None) -> None:
             require(isinstance(order.get("series"), str))
             require(type(order.get("serial_number")) is int)
             validate_serial(order["series"], order["serial_number"])
+        if "batch_id" in order:
+            batch = batches_by_author[order["author_id"]].get(order["batch_id"])
+            require(batch is not None and order.get("series") == batch["series"])
         require(order["status"] in {"sale", "not_billed"})
         require(isinstance(order["lines"], list) and 1 <= len(order["lines"]) <= 50)
         line_ids = [line["line_id"] for line in order["lines"] if "line_id" in line]

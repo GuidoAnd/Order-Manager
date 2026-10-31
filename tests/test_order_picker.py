@@ -227,7 +227,6 @@ def test_browser_multiple_selection_preserves_fields_and_layout(app, viewport):
             try:
                 await page.goto('http://127.0.0.1/ordenes/nueva')
                 await page.get_by_label('Autor', exact=True).select_option(label='Ana')
-                await page.get_by_label('Serie', exact=True).select_option('10')
                 await page.get_by_label('Numeración', exact=True).fill('007')
                 await page.get_by_role('button', name='Elegir artículos del inventario', exact=True).click()
                 form = page.locator('.picker-page:visible')

@@ -16,7 +16,8 @@ from test_review_fixes import request
 def app(tmp_path):
     app = make_app(data_dir=tmp_path / 'data')
     app.state.store.create_journey('Turno')
-    app.state.store.add_author('Ana')
+    author = app.state.store.add_author('Ana')
+    app.state.store.open_batch(author['id'], '10', app.state.store.get_journey()['id'])
     return app
 
 

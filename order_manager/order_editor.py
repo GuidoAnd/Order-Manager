@@ -14,6 +14,8 @@ from . import web
 from .store import DomainError
 from .order_picker import register_order_picker
 from .notices import order_details
+from .order_batches import active_batch
+from .order_series import legacy_series
 
 
 class EditorDrafts:
@@ -220,10 +222,29 @@ def register_order_editor(app, store, fields, notices):
                         if current != session["original"]:
                             raise DomainError("La orden cambió o fue eliminada desde que abrió el editor. "
                                               "No se guardaron sus cambios. Abra la versión actual para compararla.", 409)
+                    selected_author = values.get("author_id", "")
+                    original = session["original"]
+                    same_author = bool(original and original["author_id"] == selected_author)
+                    expected_batch = None
+                    selected_series = original.get("series") if same_author else None
+                    if same_author and not selected_series:
+                        try:
+                            selected_series = legacy_series(values.get("serial_number", ""))
+                        except ValueError as error:
+                            raise DomainError(str(error)) from None
+                    if not same_author:
+                        snapshot_author = next((a for a in session["context"]["journey"]["authors"]
+                                                if a["id"] == selected_author), None)
+                        assigned = active_batch(snapshot_author) if snapshot_author else None
+                        if not assigned:
+                            raise DomainError("Autor: asigne una serie y tanda en Jornada antes de guardar.", 409)
+                        expected_batch = assigned["id"]
+                    # La asignación procede del editor original, nunca de campos ocultos enviados.
                     order = store.save_order(
-                        values.get("author_id", ""), order_form_lines(rows, inventory),
+                        selected_author, order_form_lines(rows, inventory),
                         session["order_id"] or None, status=values.get("order_status", "sale"),
-                        series=values.get("series", ""), serial_number=values.get("serial_number", ""),
+                        series=selected_series, serial_number=values.get("serial_number", ""),
+                        batch_id=expected_batch,
                     )
                     target = web.orders_url(page, values.get("article", ""), values.get("q", ""),
                                             values.get("search_by", "all")) + "#order-results"

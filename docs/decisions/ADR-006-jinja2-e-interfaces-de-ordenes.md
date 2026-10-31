@@ -2,7 +2,7 @@
 
 ## Estado
 
-Aceptada.
+Aceptada. Actualizada para v0.3.1 el 2026-10-31.
 
 ## Fecha
 
@@ -20,7 +20,7 @@ y registrar una identificación manual de órdenes mediante dos series fijas.
 Deben conservarse la persistencia por acción, el rollback, las exportaciones,
 las restricciones de seguridad y el uso móvil desde 320 px.
 
-## Decisión
+## Decisión original — v0.3
 
 Usar Jinja2 3.1.6 y MarkupSafe 3.0.3 como dependencias de ejecución fijadas,
 compatibles con Python 3.13. Mantener las demás versiones del proyecto.
@@ -112,6 +112,59 @@ asociados al ID de jornada, con 30 minutos de vigencia, máximo 64 entradas y
 No persistir ni incluir datos de negocio en este estado. Informar al operador
 cuando un enlace ya no esté disponible y restablecer las páginas. Esta decisión
 mantiene el límite HTTP, una instancia y un worker, sin nuevas dependencias.
+
+## Actualización — v0.3.1, 2026-10-31
+
+Esta actualización sustituye la selección de serie por orden y el retorno de
+Cancelar de la decisión original. Conserva stack, rangos, identificación de
+líneas y persistencia por acción, sin nuevas dependencias.
+
+- Procesar acciones del editor mediante POST → 303 → GET. Conservar borradores
+  en memoria de una instancia, con tokens aleatorios, 30 minutos desde apertura,
+  hasta 128 entradas y 8 MiB de contenido serializado estimado. Una pérdida del
+  borrador se comunica; no afecta órdenes confirmadas.
+- Comparar la orden original antes de editar y rechazar sobrescrituras obsoletas.
+  Consumir el resultado de una sesión al guardar para que un reenvío no duplique
+  altas. Mantener CSRF y `no-store`; esta protección no impone una versión esperada
+  a todas las escrituras JSON de la API.
+- Usar un selector paginado de artículos con búsqueda, categorías, casillas y
+  cantidades. Aplicar varias referencias al borrador o reemplazar una línea.
+  Evitar un listado extenso de opciones en móvil y no incorporar JavaScript.
+- Administrar asignaciones en Jornada → Autores: serie fija y tanda numerada
+  automáticamente por autor/jornada, una abierta por autor y cierre confirmado.
+  Repetir una serie exige otra tanda. Persistir su ID, número, serie y fechas.
+- Quitar el selector de serie del editor; la numeración sigue siendo manual y
+  repetible dentro del rango de la asignación. Rechazar altas cuyo formulario
+  esperaba otra tanda o una que se cerró. Corregir órdenes de tandas cerradas
+  mientras la jornada esté abierta, conservando su tanda; cambiar de autor usa
+  la asignación válida del destino.
+- Agrupar subtotales en bloques de hasta diez registros existentes por tanda,
+  ordenados por numeración y contador como desempate. No reservar números
+  ausentes. Identificar cada bloque como «Bloque N de la tanda M». Incluir
+  órdenes no facturadas con aporte cero, sin modificar estadísticas de ventas.
+- Mantener legibles órdenes sin tanda y separar sus bloques sin inventar una
+  asignación. En la API, `series` es opcional si puede derivarse de la tanda;
+  `serial_number` sigue obligatorio y `batch_id` permite comprobar la asignación
+  esperada para altas. Conservar el contrato anterior con serie explícita para
+  autores que aún no usan tandas. No garantizar compatibilidad de escritura de
+  aplicaciones anteriores sobre datos nuevos.
+- Mantener un único buscador de órdenes con criterios Todos, Autor, ID y
+  Numeración. Conservar búsqueda, filtro y página al guardar o cancelar.
+  Mantener ID, contador y posición de una orden editada.
+- Mostrar avisos contextuales de éxito durante ocho segundos mediante CSS y
+  mantener visibles los errores. La descarga es directa y su recepción pertenece
+  al navegador. Separar Guardar/Cancelar de Agregar artículo y adaptar el panel
+  de tandas y Finalizar jornada a móvil y escritorio.
+
+Las alternativas de asignar bloques por rangos fijos y mezclar repeticiones de
+una serie no permiten representar faltantes permanentes y tandas distintas.
+El agrupamiento elegido requiere metadatos persistentes y validación de sus
+referencias. La administración previa reduce campos de cada orden; sin JavaScript,
+las acciones y filtros siguen necesitando una petición al servidor.
+
+El cierre automático de tandas y la recuperación exacta se coordinan según
+[ADR-009](ADR-009-persistencia-volumenes-y-rollback.md); el contrato vigente está
+en [la guía de interfaz](../arquitecture/FRONTEND.md).
 
 ## Revisar cuando
 

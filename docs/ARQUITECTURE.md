@@ -1,7 +1,6 @@
-# Arquitectura de Order Manager — v0.3
+# Arquitectura de Order Manager — v0.3.1
 
-Versión cerrada documentalmente el 2026-10-18. El
-[resumen de versión](version/v0_3.md) registra el alcance y la validación final.
+El [resumen de v0.3.1](version/v0_3_1.md) registra el alcance y su validación final.
 
 ## Componentes
 
@@ -15,6 +14,9 @@ El supervisor gestiona jornadas, autores, catálogo, órdenes, ventas y descarga
 | `store.py` | Reglas de negocio, bloqueo y confirmación de acciones. |
 | `persistence.py`, `state_validation.py` | Revisiones coordinadas, integridad y recuperación. |
 | `journey_export.py`, `export_formats.py` | Documento de cierre y formatos JSON, CSV y ZIP. |
+| `order_editor.py`, `order_picker.py` | Borradores del editor, conflictos, reenvíos y selección de artículos. |
+| `order_batches.py`, `batch_ui.py` | Asignación de tandas, cierre y agrupación de subtotales. |
+| `notices.py` | Avisos de operaciones confirmadas con contexto por petición. |
 | `web.py`, `templating.py`, `templates/` | Contextos y presentación con escape HTML. |
 | `journey_results.py`, `table_pages.py`, `journey_navigation.py` | Consultas paginadas y navegación. |
 | `runtime_logging.py`, `health.py`, `healthcheck.py` | Diagnóstico y comprobación de disponibilidad. |
@@ -25,7 +27,9 @@ El supervisor gestiona jornadas, autores, catálogo, órdenes, ventas y descarga
 Existe una sola jornada activa. Sus autores tienen órdenes de 1 a 50 líneas;
 el backend calcula subtotales y estadísticas. Las órdenes no facturadas conservan
 artículos y cantidades, pero no aportan ventas. Los artículos del catálogo no
-representan existencias físicas.
+representan existencias físicas. Cada autor puede asignarse una serie fija y
+una tanda, con una sola abierta. Las órdenes referencian su tanda y los bloques
+agrupan hasta diez registros, incluidos regalos con aporte cero, sin mezclar tandas.
 
 Cada acción válida confirma catálogo, acumulados, jornada, recuperación y última
 exportación como una revisión coherente antes de responder éxito. La memoria es
@@ -35,7 +39,8 @@ conservan sus valores salvo edición explícita.
 
 El cierre conserva un snapshot previo. Recuperarlo revierte el cierre y sus
 acumulados, descarta la jornada abierta tras confirmación y conserva el catálogo
-vigente. Los archivos nuevos se generan al cerrar otra vez. El historial de
+vigente. Las tandas abiertas se cierran en la exportación; el snapshot conserva
+su estado previo para restaurarlas. Los archivos nuevos se generan al cerrar otra vez. El historial de
 acciones es durable y está separado del diagnóstico rotado.
 
 ## Operación y límites
@@ -46,9 +51,12 @@ acciones es durable y está separado del diagnóstico rotado.
   Un volumen y las descargas no sustituyen una copia de seguridad.
 - Acceso por loopback de forma predeterminada, sin autenticación. `ALLOWED_HOSTS`
   permite hosts adicionales como excepción temporal para una LAN; Compose configura
-  la publicación mediante `APP_BIND_HOST`. Identidad y control de conflictos siguen
-  fuera del alcance implementado, según ADR-005.
+  la publicación mediante `APP_BIND_HOST`. No hay identidad ni coordinación de
+  múltiples instancias, según ADR-005. El editor HTML detecta cambios de la orden
+  original y reenvíos; la API no exige una versión esperada de cada orden.
 - HTML/CSS sin JavaScript, con formularios del servidor y uso desde 320 px.
+  Los borradores y los avisos viven temporalmente en memoria; las órdenes
+  confirmadas y las tandas pertenecen a las revisiones persistentes.
 - Solo la última exportación está disponible en el servidor; los acumulados no
   constituyen un archivo completo de todas las órdenes históricas.
 

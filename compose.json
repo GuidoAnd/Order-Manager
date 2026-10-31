@@ -1,7 +1,7 @@
 {
   "services": {
     "order-manager": {
-      "image": "order-manager:0.3",
+      "image": "order-manager:0.3.1",
       "build": {
         "context": ".",
         "dockerfile": "Dockerfile",

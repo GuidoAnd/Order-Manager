@@ -1,0 +1,18 @@
+<section class="panel batch-confirmation">
+    <p>Autor: <strong>{{ author.name }}</strong>.</p>
+    <p>Serie {{ batch.series }} · Tanda {{ batch.number }}</p>
+    <p>{{ count }} órdenes · Subtotal: {{ total }}</p>
+    <p>Podrás corregir sus órdenes mientras la jornada siga abierta. Para cargar nuevas órdenes deberás asignar otra tanda.</p>
+    <form method="post" action="/ui/batches">
+        <input type="hidden" name="batch_page" value="{{ page }}">
+        <input type="hidden" name="journey_id" value="{{ journey_id }}">
+        <input type="hidden" name="author_id" value="{{ author.id }}">
+        <input type="hidden" name="batch_id" value="{{ batch.id }}">
+        <input type="hidden" name="action" value="close">
+        <input type="hidden" name="confirm" value="yes">
+        <div class="actions">
+            <button class="danger" type="submit">Confirmar cierre de tanda</button>
+            <a class="button quiet" href="/jornada?batch_page={{ page }}#batch-results">Cancelar</a>
+        </div>
+    </form>
+</section>

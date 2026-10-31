@@ -192,11 +192,13 @@ async def run_mobile_workflow(tmp_path, viewport):
             await page.get_by_role("button", name="Guardar autor").click()
             registered = page.locator(".author-names").get_by_text("Ana")
             assert await registered.is_visible()
+            assignment = page.locator('#batch-results .table-page-view:visible tbody tr').first
+            await assignment.get_by_label('Serie para Ana').select_option('10')
+            await assignment.get_by_role('button', name='Asignar serie').click()
             await assert_layout(page, viewport)
 
             await navigate_section(page, "Órdenes")
             await page.get_by_role("link", name="Agregar nueva orden").click()
-            await page.get_by_label("Serie", exact=True).select_option("10")
             await page.get_by_label("Numeración", exact=True).fill("001")
             await assert_layout(page, viewport)
             await assert_order_buttons(page, viewport)
@@ -318,7 +320,6 @@ async def run_mobile_workflow(tmp_path, viewport):
 
             await navigate_section(page, "Órdenes")
             await page.get_by_role("link", name="Agregar nueva orden").click()
-            await page.get_by_label("Serie", exact=True).select_option("10")
             await page.get_by_label("Numeración", exact=True).fill("001")
             await page.locator('select[name="author_id"]').select_option(label="Ana")
             await choose_order_article(page, 0, "Agua Villamanaos 600cc")

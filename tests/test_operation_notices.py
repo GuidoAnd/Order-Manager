@@ -246,6 +246,7 @@ def test_order_notices_use_confirmed_number_and_current_author(app):
     message_at(app, response, 'La orden 005 de Bea ha sido exitosamente guardada!')
     order = store.get_journey()['orders'][0]
     other = store.add_author('Caro')
+    store.open_batch(other['id'], '20', store.get_journey()['id'])
     response = post(app, {**editor(app, order['id']), 'author_id': other['id'],
                           'series': '20', 'serial_number': '081'})
     message_at(app, response, 'Orden 081 ha sido modificada con éxito!')

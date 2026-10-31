@@ -9,7 +9,7 @@
 </head>
 <body>
     <header class="top">
-        <a class="brand" href="/">Order Manager <small>v0.3</small></a>
+        <a class="brand" href="/">Order Manager <small>v0.3.1</small></a>
         <nav class="desktop-navigation" aria-label="Secciones">{% for path, label in sections %}<a href="{{ path }}">{{ label }}</a>
 {% endfor %}</nav>
         <details class="mobile-navigation">
@@ -27,6 +27,6 @@
         {% endif %}
         {{ content | safe }}
     </main>
-    <footer>Order Manager · v0.3</footer>
+    <footer>Order Manager · v0.3.1</footer>
 </body>
 </html>

@@ -50,7 +50,7 @@ def test_not_billed_orders_keep_articles_without_any_amount(active, source):
     assert order["lines"][0]["name"] in store.get_events()[-1]["detail"]
 
 
-def test_statistics_catalog_subtotals_and_export_exclude_non_sales(active):
+def test_statistics_and_export_exclude_non_sales_but_blocks_show_zero(active):
     app, author = active
     store = app.state.store
     sale = store.save_order(author["id"], [raw_line(name="Venta", unit_price=100)])
@@ -69,7 +69,9 @@ def test_statistics_catalog_subtotals_and_export_exclude_non_sales(active):
     gift_orders = html.split(f'id="author-orders-{other["id"]}"', 1)[1].split('</div>', 1)[0]
     assert "No facturada (regalo/cancelada)" in gift_orders and "Sin importe" in gift_orders
     subtotals = html.split(f'id="author-subtotals-{other["id"]}"', 1)[1].split('</div>', 1)[0]
-    assert "0 bloques" in subtotals
+    assert "1 bloques" in subtotals
+    assert 'data-label="Subtotal">0</td>' in subtotals
+    assert "0 · No facturada" in subtotals
     exported = json.loads(store.close_journey())
     assert exported["orders"] == [sale, gift]
     assert exported["statistics"] == stats
@@ -116,6 +118,7 @@ def test_api_status_transitions_preserve_id_and_recalculate_sales(active):
 
 def test_forms_keep_status_context_and_ignore_prices(active):
     app, author = active
+    app.state.store.open_batch(author["id"], "10", app.state.store.get_journey()["id"])
     article = next(item for item in app.state.store.get_available_articles() if item["unit_price"] is None)
     values = {"count": "1", "author_id": author["id"], "source_0": "inventory",
               "catalog_id_0": article["id"], "quantity_0": "2", "unit_price_0": "unused",

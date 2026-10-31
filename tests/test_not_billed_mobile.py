@@ -21,6 +21,7 @@ async def check_not_billed(tmp_path, viewport):
     coffee = next(item for item in catalog if item["name"] == "Cafe")
     pending = next(item for item in catalog if item["unit_price"] is None)
     store.save_order(author["id"], [{"catalog_id": coffee["id"], "quantity": 1}])
+    store.open_batch(author["id"], "10", store.get_journey()["id"])
     expected = deepcopy(store.get_summary())
     inventory = store.get_inventory()
     category_position = next(i for i, item in enumerate(inventory["categories"])
@@ -36,7 +37,6 @@ async def check_not_billed(tmp_path, viewport):
         page.set_default_timeout(5000)
         try:
             await page.goto("http://127.0.0.1/ordenes/nueva")
-            await page.get_by_label("Serie", exact=True).select_option("10")
             await page.get_by_label("Numeración", exact=True).fill("001")
             editor = page.locator("#order-editor")
             not_billed = page.locator('input[name="order_status"][value="not_billed"]')

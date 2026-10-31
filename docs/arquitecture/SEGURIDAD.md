@@ -5,8 +5,10 @@ publicado en loopback. Se admite una excepción temporal para varios dispositivo
 de una red local mediante hosts adicionales explícitos.
 
 No hay autenticación: quien alcance el servicio puede operar como supervisor.
-La excepción no incorpora identidad, sesiones, HTTPS ni control de conflictos
-entre ediciones. Esos requisitos continúan definidos en el
+La excepción no incorpora identidad, sesiones ni HTTPS. El editor HTML de v0.3.1
+detecta sobrescrituras desde formularios antiguos y reenvíos, pero no ofrece
+autenticación ni control de versiones obligatorio para todos los clientes API.
+Las etapas de seguridad con identidad y concurrencia compartida están definidas en el
 [ADR de seguridad y escalabilidad](../decisions/ADR-005-seguridad-local-y-escalabilidad.md).
 
 ## Excepción temporal de hosts

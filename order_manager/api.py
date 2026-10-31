@@ -27,6 +27,7 @@ from .store import MAX_INPUT_INTEGER, DomainError, Store
 from .runtime_logging import LogConfig, RequestDiagnostics
 from .journey_navigation import JourneyNavigation
 from .order_editor import register_order_editor
+from .batch_ui import register_batch_ui
 from .health import HealthCheck
 from .notices import NoticeContext, OperationNotices, order_details
 from .security import LocalSecurity, MAX_FIELDS, parse_allowed_hosts
@@ -80,7 +81,8 @@ class LineInput(BaseModel):
 
 
 class OrderInput(BaseModel):
-    series: Literal["10", "20"]
+    series: Literal["10", "20"] | None = None
+    batch_id: str | None = None
     serial_number: NonBooleanInt = Field(ge=1, le=160)
     author_id: str
     status: Literal["sale", "not_billed"] = "sale"
@@ -104,7 +106,7 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
             store.runtime_log.record(logging.INFO, "Aplicación detenida.", "shutdown")
             store.runtime_log.close()
 
-    app = FastAPI(title="Order Manager", version="0.3", lifespan=lifespan)
+    app = FastAPI(title="Order Manager", version="0.3.1", lifespan=lifespan)
     notices = OperationNotices()
     app.state.operation_notices = notices
     app.add_middleware(NoticeContext, notices=notices)
@@ -244,14 +246,14 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
     def create_order(data: OrderInput):
         return store.save_order(
             data.author_id, [line.model_dump() for line in data.lines], status=data.status,
-            series=data.series, serial_number=data.serial_number,
+            series=data.series, serial_number=data.serial_number, batch_id=data.batch_id,
         )
 
     @app.put("/api/orders/{order_id}")
     def update_order(order_id: str, data: OrderInput):
         lines = [line.model_dump() for line in data.lines]
         return store.save_order(data.author_id, lines, order_id, status=data.status,
-                                series=data.series, serial_number=data.serial_number)
+                                series=data.series, serial_number=data.serial_number, batch_id=data.batch_id)
 
     @app.delete("/api/orders/{order_id}", status_code=204)
     def delete_order(order_id: str):
@@ -292,6 +294,7 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
                 values = {**saved, **values}
         return web.journey_page(
             store, error=warning, navigation=navigation,
+            batch_page=values.get("batch_page", "1"),
             article_pages=web.journey_article_pages(values),
             order_pages=journey_results.page_values(values, "orders"),
             subtotal_pages=journey_results.page_values(values, "subtotals"),
@@ -483,6 +486,7 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
                 status_code=error.status,
             )
 
+    register_batch_ui(app, store, fields, notices)
     register_order_editor(app, store, fields, notices)
     return app
 

@@ -6,4 +6,4 @@ __pycache__/
 data/
 /docs/private/
 deployment.env
-order-manager-0.3.oci.tar
+order-manager-*.oci.tar

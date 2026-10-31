@@ -904,3 +904,54 @@ footer {
         width: 100%;
     }
 }
+
+.batch-panel {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #cbd3dc;
+}
+
+.batch-assignment .actions, .batch-confirmation .actions {
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.batch-panel select, .batch-panel button, .batch-panel .button,
+.batch-confirmation button, .batch-confirmation .button {
+    min-height: 44px;
+}
+
+.journey-final-panel {
+    text-align: right;
+}
+
+.journey-final-panel .actions {
+    justify-content: flex-end;
+}
+
+.order-actions {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #cbd3dc;
+    gap: 1.5rem;
+}
+
+@media (max-width: 650px) {
+    .batch-panel, .batch-panel td, .batch-confirmation, .journey-final-panel {
+        text-align: center;
+    }
+
+    .batch-panel .actions, .batch-confirmation .actions,
+    .journey-final-panel .actions, .order-actions {
+        flex-direction: column;
+        align-items: center;
+        gap: 1.5rem;
+    }
+
+    .batch-panel button, .batch-panel .button,
+    .batch-confirmation button, .batch-confirmation .button,
+    .journey-final-panel .button, .order-actions button, .order-actions .button {
+        width: 100%;
+        text-align: center;
+    }
+}

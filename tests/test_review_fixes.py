@@ -70,7 +70,8 @@ def request(app, method, url, values=None, *, form=False, raw=False, follow_edit
 def active_app(tmp_path):
     app = make_app(tmp_path / "globals.json")
     app.state.store.create_journey("Jornada A")
-    app.state.store.add_author("Ana")
+    author = app.state.store.add_author("Ana")
+    app.state.store.open_batch(author["id"], "10", app.state.store.get_journey()["id"])
     return app
 
 

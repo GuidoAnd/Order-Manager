@@ -7,6 +7,7 @@ from .templating import component, render
 
 from .store import is_sale
 from .order_series import serial_label
+from .order_batches import subtotal_blocks
 
 
 def h(value: object) -> str:
@@ -31,10 +32,10 @@ def normalize_pages(
     for author in authors:
         author_id = author["id"]
         order_count = sum(order["author_id"] == author_id for order in orders)
-        sale_count = sum(order["author_id"] == author_id and is_sale(order) for order in orders)
+        author_orders = [order for order in orders if order["author_id"] == author_id]
         totals = {
             "orders": order_count,
-            "subtotals": (sale_count + 9) // 10,
+            "subtotals": len(subtotal_blocks(author, author_orders)),
             "articles": len(stats["by_author"][author_id]["by_article"]),
         }
         for kind, total in totals.items():
@@ -170,24 +171,29 @@ def author_tables(
         author, "orders", "Órdenes de este autor", len(orders), state, headings,
         order_row, "Este autor todavía no tiene órdenes.",
     )
-    sales = [order for order in orders if is_sale(order)]
-    blocks = [sales[index:index + 10] for index in range(0, len(sales), 10)]
+    blocks = subtotal_blocks(author, orders)
     subtotal_headings = ("Bloque", "Cantidad de órdenes", "Subtotal", "Detalle")
 
     def subtotal_row(index):
-        block = blocks[index]
-        items = "".join(f'<li>#{h(order["number"])}</li>' for order in block)
+        block = blocks[index]["orders"]
+        items = "".join(
+            f'<li>#{h(order["number"])}' +
+            (f' · {h(serial_label(order))}' if order.get("series") else "") +
+            (' · 0 · No facturada' if not is_sale(order) else "") + '</li>'
+            for order in block
+        )
         detail = render(
             'journey_results/subtotal_row.html',
             items=items,
         )
         return _cells(
-            (h(index + 1), h(len(block)), h(sum(order["total"] for order in block)), detail),
+            (h(blocks[index]["title"]), h(len(block)),
+             h(sum(order["total"] for order in block if is_sale(order))), detail),
             subtotal_headings,
         )
 
     subtotal_table = _block(
-        author, "subtotals", "Subtotales por bloques de hasta 10 órdenes", len(blocks),
+        author, "subtotals", "Subtotales por tanda · hasta 10 órdenes por bloque", len(blocks),
         state, subtotal_headings, subtotal_row, "Todavía no hay subtotales.",
     )
     articles = sorted(

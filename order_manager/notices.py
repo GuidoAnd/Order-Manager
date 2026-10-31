@@ -10,6 +10,8 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 CURRENT_NOTICE = ContextVar('operation_notice', default=None)
 MESSAGES = {
+    'batch_opened': 'Serie {series} · Tanda {batch} asignada a {author}.',
+    'batch_closed': 'Tanda {batch} de {author} cerrada con éxito.',
     'order_created': 'La orden {number} de {author} ha sido exitosamente guardada!',
     'order_updated': 'Orden {number} ha sido modificada con éxito!',
     'order_deleted': 'La orden {number} de {author} ha sido eliminada!',

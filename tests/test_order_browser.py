@@ -25,6 +25,8 @@ def populate(app, count):
         }])
         for index in range(count)
     ]
+    for author in authors:
+        store.open_batch(author["id"], "10", store.get_journey()["id"])
     return authors, orders
 
 
@@ -188,7 +190,6 @@ async def check_order_browser(tmp_path, viewport):
             await rows.locator(".order-actions-menu summary").click()
             await rows.get_by_role("button", name="Editar orden").click()
             editor = page.locator("#order-editor")
-            await page.get_by_label("Serie", exact=True).select_option("10")
             await page.get_by_label("Numeración", exact=True).fill("001")
             await editor.locator('input[name="quantity_0"]').fill("")
             await editor.get_by_role("button", name="Guardar orden").click()

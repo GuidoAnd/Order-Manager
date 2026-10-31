@@ -15,20 +15,22 @@
                 </select>
             </label>
             <div class="order-identification">
-                <label>Serie
-                    <select aria-label="Serie" name="series" required aria-describedby="series-range{% if field_errors.series %} series-error{% endif %}"{% if field_errors.series %} aria-invalid="true"{% endif %}>
-                        <option value="">Seleccionar serie</option>
-                        <option value="10"{% if series == '10' %} selected{% endif %}>10</option>
-                        <option value="20"{% if series == '20' %} selected{% endif %}>20</option>
-                    </select>
-                    {% if field_errors.series %}<span class="field-error" id="series-error">{{ field_errors.series }}</span>{% endif %}
-                </label>
                 <label>Numeración
                     <input aria-label="Numeración" name="serial_number" type="number" min="1" max="160" step="1"
                            value="{{ serial_number }}" required aria-describedby="series-range{% if field_errors.serial_number %} serial-error{% endif %}"{% if field_errors.serial_number %} aria-invalid="true"{% endif %}>
                 </label>
                 {% if field_errors.serial_number %}<p class="field-error" id="serial-error">{{ field_errors.serial_number }}</p>{% endif %}
-                <p id="series-range">Serie 10: 001–080. Serie 20: 081–160. Numeración manual.</p>
+                <p id="series-range">La serie y la tanda corresponden al autor. Serie 10: 001–080. Serie 20: 081–160.</p>
+                <details class="order-assignments">
+                    <summary>Series asignadas por autor</summary>
+                    <ul class="list">{% for assignment in assignments %}
+                        <li>{{ assignment.name }}: {% if assignment.batch %}Serie {{ assignment.batch.series }} · Tanda {{ assignment.batch.number }}{% else %}Sin tanda abierta{% endif %}</li>
+                    {% endfor %}</ul>
+                    <a href="/jornada#batch-results">Administrar asignaciones en Jornada</a>
+                </details>
+                {% if order_batch %}<p>Serie {{ order_batch.series }} · Tanda {{ order_batch.number }}{% if order_batch.closed_at %} · Cerrada; se permiten correcciones.{% endif %}</p>
+                {% elif legacy_series %}<p>Orden anterior sin tanda asignada · Serie {{ legacy_series }}.</p>{% endif %}
+                {% if field_errors.series %}<p class="field-error">{{ field_errors.series }}</p>{% endif %}
             </div>
             <fieldset class="order-status-choice">
                 <legend>Tipo de orden</legend>

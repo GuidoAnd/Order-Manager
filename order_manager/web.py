@@ -21,6 +21,8 @@ from .article_search import ArticleSearch, article_identity, searchable
 from .store import DomainError, Store, is_sale, summary
 from .security import protect_forms
 from .notices import CURRENT_NOTICE
+from .order_batches import active_batch, find_batch
+from .batch_ui import batch_panel
 
 
 STYLESHEET = Path(__file__).resolve().parent.parent / "static" / "styles.css"
@@ -178,7 +180,7 @@ def journey_page(
     article_pages: dict[str, int] | None = None,
     order_pages: dict[str, int] | None = None,
     subtotal_pages: dict[str, int] | None = None,
-    navigation=None,
+    navigation=None, batch_page: object = 1,
 ) -> str:
     journey = store.get_journey()
     if not journey:
@@ -187,6 +189,10 @@ def journey_page(
         )
         return layout("Jornada", alert(error) + body + recovery_button(store))
 
+    try:
+        batch_page = max(1, int(batch_page))
+    except (ValueError, TypeError):
+        batch_page = 1
     author_values = author_values or {}
     author_action = author_values.get("action")
     add_open = " open" if author_action == "add_author" else ""
@@ -235,8 +241,9 @@ def journey_page(
         edit_open=edit_open,
         authors=authors,
         author_results=author_results,
+        batch_panel=batch_panel(journey, batch_page),
     )
-    return layout("Jornada", alert(error) + body + recovery_button(store), journey_results.responsive_styles())
+    return layout("Jornada", alert(error) + body + recovery_button(store), journey_results.responsive_styles() + table_pages.responsive_styles())
 
 
 def _taxonomy_fields(index: int | str, row: dict, inventory: dict) -> str:
@@ -510,6 +517,12 @@ def orders_page(
 
     if editor:
         author_options = component("author_options", journey["authors"], author_id)
+        order_batch = None
+        if selected_order and selected_order.get("batch_id"):
+            selected_author = next(a for a in journey['authors'] if a['id'] == selected_order['author_id'])
+            order_batch = find_batch(selected_author, selected_order['batch_id'])
+        assignments = [dict(name=author['name'], batch=active_batch(author))
+                       for author in journey['authors']]
         inventory = (editor_context["inventory"] if editor_context else
                      store.get_order_inventory(selected_order["id"] if selected_order else ""))
         available_articles = inventory["articles"]
@@ -521,6 +534,9 @@ def orders_page(
         body = render(
             'web/order_editor.html',
             form_title=form_title,
+            order_batch=order_batch,
+            assignments=assignments,
+            legacy_series=selected_order.get("series") if selected_order and not order_batch else None,
             cancel_url=orders_url(page, article_id, query, search_by) + "#order-results",
             editor_token=editor_token,
             list_fields=_order_list_fields(page, article_id, query, search_by),
