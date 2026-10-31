@@ -14,6 +14,7 @@ from uuid import uuid4
 from .article_search import article_identity
 from .order_lines import line_identifier
 from .order_series import validate_serial
+from .order_batches import active_batch, find_batch
 from .journey_export import build_export
 from .seed_inventory import initial_inventory
 from .persistence import RevisionStorage, StorageError
@@ -435,6 +436,35 @@ class Store:
             self._event("author_deleted", item["name"])
 
     @mutating
+    def open_batch(self, author_id: str, series: str, expected_id: str,
+                   previous_batch_id: str = "") -> dict:
+        journey = self._active(expected_id)
+        author = self._find(journey["authors"], author_id, "Autor")
+        batches = author.get("batches", [])
+        if active_batch(author):
+            raise DomainError("El autor ya tiene una tanda abierta. Ciérrela antes de asignar otra.", 409)
+        if previous_batch_id != (batches[-1]["id"] if batches else ""):
+            raise DomainError("Las tandas del autor cambiaron. Revise la asignación vigente.", 409)
+        if series not in {"10", "20"}:
+            raise DomainError("Serie: seleccione 10 o 20.")
+        batch = dict(id=str(uuid4()), number=len(batches) + 1, series=series,
+                     opened_at=now(), closed_at=None)
+        author.setdefault("batches", []).append(batch)
+        self._event("batch_opened", f'{author["name"]} · Serie {series} · Tanda {batch["number"]}')
+        return deepcopy(batch)
+
+    @mutating
+    def close_batch(self, author_id: str, batch_id: str, expected_id: str) -> dict:
+        journey = self._active(expected_id)
+        author = self._find(journey["authors"], author_id, "Autor")
+        batch = find_batch(author, batch_id)
+        if not batch or batch["closed_at"] is not None:
+            raise DomainError("La tanda ya fue cerrada o no corresponde al autor.", 409)
+        batch["closed_at"] = now()
+        self._event("batch_closed", f'{author["name"]} · Serie {batch["series"]} · Tanda {batch["number"]}')
+        return deepcopy(batch)
+
+    @mutating
     def add_article(self, data: dict) -> dict:
         with self.lock:
             journey = self._active()
@@ -623,16 +653,37 @@ class Store:
     def save_order(
         self, author_id: str, lines: list[dict], order_id: str | None = None,
         status: str = "sale", *, series: str | None = None,
-        serial_number: object = None,
+        serial_number: object = None, batch_id: str | None = None,
     ) -> dict:
         with self.lock:
             j = self._active()
             if status not in {"sale", "not_billed"}:
                 raise DomainError("Estado de la orden inválido.")
-            self._find(j["authors"], author_id, "Autor")
+            author = self._find(j["authors"], author_id, "Autor")
             existing_order = (
                 self._find(j["orders"], order_id, "Orden") if order_id else None
             )
+            author_changed = bool(existing_order and existing_order["author_id"] != author_id)
+            assigned = None
+            if existing_order and existing_order["author_id"] == author_id:
+                if existing_order.get("batch_id"):
+                    assigned = find_batch(author, existing_order["batch_id"])
+                    if assigned is None:
+                        raise DomainError("La tanda de la orden no está disponible.", 409)
+            else:
+                assigned = active_batch(author)
+                if batch_id is not None and (not assigned or assigned["id"] != batch_id):
+                    raise DomainError("La tanda del autor cambió o no está abierta. Revise la asignación en Jornada.", 409)
+                if not assigned and author.get("batches"):
+                    raise DomainError("El autor no tiene una tanda abierta. Asígnele una serie en Jornada.", 409)
+            # Conserva la entrada interna anterior sin numeración; el editor y la API
+            # exigen numeración para las altas interactivas.
+            if batch_id is None and series is None and serial_number is None:
+                assigned = None
+            if assigned:
+                if series is not None and series != assigned["series"]:
+                    raise DomainError("Serie: la numeración debe corresponder a la tanda asignada.")
+                series = assigned["series"]
             serial = None
             if series is not None or serial_number is not None:
                 try:
@@ -688,6 +739,10 @@ class Store:
                 action = "order_created"
             if serial is not None:
                 order.update(series=serial[0], serial_number=serial[1])
+            if assigned:
+                order["batch_id"] = assigned["id"]
+            elif author_changed:
+                order.pop("batch_id", None)
             if status == "not_billed":
                 articles = ", ".join(
                     f'{line["name"]} × {line["quantity"]}' for line in normalized
@@ -724,6 +779,10 @@ class Store:
             new_articles = list(self._new_catalog_articles.values())
             try:
                 export = build_export(j, stats, new_articles, self._price_changes, now())
+                for author in export["authors"]:
+                    for batch in author.get("batches", []):
+                        if batch["closed_at"] is None:
+                            batch["closed_at"] = export["closed_at"]
                 payload = json.dumps(export, ensure_ascii=False, indent=2).encode("utf-8")
             except Exception as error:
                 self.runtime_log.record(logging.ERROR, "Falló la generación de la exportación de cierre.",

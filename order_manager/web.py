@@ -20,6 +20,9 @@ from . import journey_results, table_pages
 from .article_search import ArticleSearch, article_identity, searchable
 from .store import DomainError, Store, is_sale, summary
 from .security import protect_forms
+from .notices import CURRENT_NOTICE
+from .order_batches import active_batch, find_batch
+from .batch_ui import batch_panel
 
 
 STYLESHEET = Path(__file__).resolve().parent.parent / "static" / "styles.css"
@@ -72,7 +75,7 @@ def stylesheet_url() -> str:
     return "/static/styles.css?" + urlencode({"v": version})
 
 
-def layout(title: str, content: str, head: str = "") -> str:
+def layout(title: str, content: str, head: str = "", *, show_notice: bool = True) -> str:
     content = protect_forms(content)
     sections = (
         ("/", "Dashboard"),
@@ -88,6 +91,7 @@ def layout(title: str, content: str, head: str = "") -> str:
         head=head,
         sections=sections,
         content=content,
+        notice=CURRENT_NOTICE.get() if show_notice else None,
     )
 
 
@@ -176,7 +180,7 @@ def journey_page(
     article_pages: dict[str, int] | None = None,
     order_pages: dict[str, int] | None = None,
     subtotal_pages: dict[str, int] | None = None,
-    navigation=None,
+    navigation=None, batch_page: object = 1,
 ) -> str:
     journey = store.get_journey()
     if not journey:
@@ -185,6 +189,10 @@ def journey_page(
         )
         return layout("Jornada", alert(error) + body + recovery_button(store))
 
+    try:
+        batch_page = max(1, int(batch_page))
+    except (ValueError, TypeError):
+        batch_page = 1
     author_values = author_values or {}
     author_action = author_values.get("action")
     add_open = " open" if author_action == "add_author" else ""
@@ -233,42 +241,9 @@ def journey_page(
         edit_open=edit_open,
         authors=authors,
         author_results=author_results,
+        batch_panel=batch_panel(journey, batch_page),
     )
-    return layout("Jornada", alert(error) + body + recovery_button(store), journey_results.responsive_styles())
-
-
-def _catalog_option(article: dict, selected_id: str) -> str:
-    selected = " selected" if article["id"] == selected_id else ""
-    price = article["unit_price"]
-    price_label = "precio a completar" if price is None else str(price)
-    temporary_label = " · de esta jornada" if article.get("temporary") else ""
-    return (
-        f'<option value="{h(article["id"])}"{selected}>'
-        f'{h(article["name"])} · {h(price_label)}{h(temporary_label)}</option>'
-    )
-
-
-def _catalog_options(catalog: list[dict], selected_id: str) -> str:
-    options = []
-    current_group = None
-    for article in sorted(
-        catalog,
-        key=lambda item: (
-            item["category"].casefold(),
-            item["subcategory"].casefold(),
-            item["name"].casefold(),
-        ),
-    ):
-        group = (article["category"], article["subcategory"])
-        if group != current_group:
-            if current_group is not None:
-                options.append("</optgroup>")
-            options.append(f'<optgroup label="{h(" / ".join(group))}">')
-            current_group = group
-        options.append(_catalog_option(article, selected_id))
-    if current_group is not None:
-        options.append("</optgroup>")
-    return "\n".join(options)
+    return layout("Jornada", alert(error) + body + recovery_button(store), journey_results.responsive_styles() + table_pages.responsive_styles())
 
 
 def _taxonomy_fields(index: int | str, row: dict, inventory: dict) -> str:
@@ -341,7 +316,7 @@ def _order_line(index: int, row: dict, catalog: list[dict], inventory: dict) -> 
         article["id"] == selected_id for article in catalog
     ):
         catalog = [*catalog, {**row, "id": selected_id}]
-    catalog_options = _catalog_options(catalog, selected_id)
+    selected_article = next((article for article in catalog if article["id"] == selected_id), None)
     quantity = value("quantity") or "1"
     source = row.get("source", "inventory" if selected_id else (
         "new" if row.get("name") else "inventory"
@@ -363,8 +338,8 @@ def _order_line(index: int, row: dict, catalog: list[dict], inventory: dict) -> 
         index_6=index,
         new_checked=new_checked,
         index_7=index,
-        index_8=index,
-        catalog_options=catalog_options,
+        selected_id=selected_id,
+        selected_article=selected_article,
         index_9=index,
         inventory_price=inventory_price,
         new_article_fields_index_row_inventory=_new_article_fields(index, row, inventory),
@@ -374,6 +349,7 @@ def _order_line(index: int, row: dict, catalog: list[dict], inventory: dict) -> 
 
 def _order_row(
     order: dict, authors: dict[str, str], page: int, article_id: str, query: str,
+    search_by: str = "all",
 ) -> str:
     details = ", ".join(
         f'{line["name"]} × {line["quantity"]}'
@@ -384,7 +360,7 @@ def _order_row(
     total = h(order["total"]) if is_sale(order) else "Sin importe"
     return render(
         'web/order_row.html',
-        editor_url=order_editor_url(order['id'], page, article_id, query),
+        editor_url=order_editor_url(order['id'], page, article_id, query, search_by),
         serial_label=serial_label(order),
         order_number=order['number'],
         status_label=status_label,
@@ -392,24 +368,28 @@ def _order_row(
         details=details,
         total=total,
         order_number_2=order['number'],
-        order_list_fields_page_article_id_query=_order_list_fields(page, article_id, query),
+        order_list_fields_page_article_id_query=_order_list_fields(page, article_id, query, search_by),
         order_id=order['id'],
-        order_list_fields_page_article_id_query_2=_order_list_fields(page, article_id, query),
+        order_list_fields_page_article_id_query_2=_order_list_fields(page, article_id, query, search_by),
         order_id_2=order['id'],
     )
 
 
-def _order_list_fields(page: int, article_id: str, query: str) -> str:
-    return component("hidden_fields", {"page": page, "article": article_id, "q": query})
+def _order_list_fields(page: int, article_id: str, query: str, search_by: str = "all") -> str:
+    return component("hidden_fields", {
+        "page": page, "article": article_id, "q": query, "search_by": search_by,
+    })
 
 
-def order_editor_url(edit_id: str = "", page: int = 1, article_id: str = "", query: str = "") -> str:
+def order_editor_url(edit_id: str = "", page: int = 1, article_id: str = "", query: str = "",
+                     search_by: str = "all") -> str:
     path = f"/ordenes/{edit_id}/editar" if edit_id else "/ordenes/nueva"
-    return path + "?" + urlencode({"page": page, "article": article_id, "q": query})
+    return path + "?" + urlencode({"page": page, "article": article_id, "q": query, "search_by": search_by})
 
 
-def orders_url(page: int = 1, article_id: str = "", query: str = "") -> str:
-    return "/ordenes?" + urlencode({"page": page, "article": article_id, "q": query})
+def orders_url(page: int = 1, article_id: str = "", query: str = "",
+               search_by: str = "all") -> str:
+    return "/ordenes?" + urlencode({"page": page, "article": article_id, "q": query, "search_by": search_by})
 
 
 def _shared_order_pages(orders: list[dict], authors: list[dict], size: int) -> list[list[dict]]:
@@ -434,7 +414,7 @@ def _shared_order_pages(orders: list[dict], authors: list[dict], size: int) -> l
 
 def _order_results(
     orders: list[dict], authors: list[dict], page: int, article_id: str,
-    query: str, size: int,
+    query: str, size: int, search_by: str = "all",
 ) -> str:
     total = len(orders)
     if query.strip():
@@ -452,7 +432,7 @@ def _order_results(
         if not author_orders:
             continue
         rows = "\n".join(
-            _order_row(order, names, page, article_id, query) for order in author_orders
+            _order_row(order, names, page, article_id, query, search_by) for order in author_orders
         )
         sections.append(render(
             'web/order_results.html',
@@ -467,11 +447,11 @@ def _order_results(
     links = []
     if page > 1:
         links.append(
-            f'<a class="button" href="{h(orders_url(page - 1, article_id, query))}#order-results">Anterior</a>'
+            f'<a class="button" href="{h(orders_url(page - 1, article_id, query, search_by))}#order-results">Anterior</a>'
         )
     if page < pages:
         links.append(
-            f'<a class="button quiet" href="{h(orders_url(page + 1, article_id, query))}#order-results">Siguiente</a>'
+            f'<a class="button quiet" href="{h(orders_url(page + 1, article_id, query, search_by))}#order-results">Siguiente</a>'
         )
     label = "orden" if total == 1 else "órdenes"
     return render(
@@ -504,8 +484,11 @@ def orders_page(
     query: str = "",
     order_status: str | None = None, *, editor: bool = False,
     series: str | None = None, serial_number: object = None,
+    editor_token: str = "", editor_context: dict | None = None,
+    search_by: str = "all",
 ) -> str:
-    journey = store.get_journey()
+    search_by = search_by if search_by in {"all", "author", "id", "serial"} else "all"
+    journey = editor_context["journey"] if editor_context else store.get_journey()
     if not journey:
         message = '<p>Primero <a href="/jornada">crea una jornada</a>.</p>'
         return layout("Órdenes", alert(error) + message)
@@ -534,8 +517,15 @@ def orders_page(
 
     if editor:
         author_options = component("author_options", journey["authors"], author_id)
-        available_articles = store.get_available_articles()
-        inventory = store.get_order_inventory(selected_order["id"] if selected_order else "")
+        order_batch = None
+        if selected_order and selected_order.get("batch_id"):
+            selected_author = next(a for a in journey['authors'] if a['id'] == selected_order['author_id'])
+            order_batch = find_batch(selected_author, selected_order['batch_id'])
+        assignments = [dict(name=author['name'], batch=active_batch(author))
+                       for author in journey['authors']]
+        inventory = (editor_context["inventory"] if editor_context else
+                     store.get_order_inventory(selected_order["id"] if selected_order else ""))
+        available_articles = inventory["articles"]
         line_cards = "\n".join(
             _order_line(index, row, available_articles, inventory)
             for index, row in enumerate(rows)
@@ -544,7 +534,12 @@ def orders_page(
         body = render(
             'web/order_editor.html',
             form_title=form_title,
-            list_fields=_order_list_fields(page, article_id, query),
+            order_batch=order_batch,
+            assignments=assignments,
+            legacy_series=selected_order.get("series") if selected_order and not order_batch else None,
+            cancel_url=orders_url(page, article_id, query, search_by) + "#order-results",
+            editor_token=editor_token,
+            list_fields=_order_list_fields(page, article_id, query, search_by),
             line_count=len(rows),
             edit_id=edit_id,
             author_options=author_options,
@@ -586,19 +581,29 @@ def orders_page(
     if search_query:
         names = {author["id"]: author["name"] for author in journey["authors"]}
         number = search_query.removeprefix("#").strip()
-        visible_orders = [
-            order for order in visible_orders
-            if (
-                (number.isdecimal() and (str(order["number"]) == number
-                 or (not search_query.startswith("#") and order.get("serial_number") == int(number))))
-                or (not search_query.startswith("#")
-                    and search_query in searchable(names.get(order["author_id"], "")))
+        numeric = number.isascii() and number.isdecimal()
+        normalized_number = number.lstrip("0") or "0"
+
+        def matches(order):
+            order_id_match = (
+                (numeric and normalized_number == str(order["number"]))
+                or search_query == order["id"].lower()
             )
-        ]
+            serial_match = numeric and normalized_number == str(order.get("serial_number"))
+            author_match = search_query in searchable(names.get(order["author_id"], ""))
+            if search_by == "id":
+                return order_id_match
+            if search_by == "serial":
+                return not search_query.startswith("#") and serial_match
+            if search_by == "author":
+                return author_match
+            return order_id_match or (not search_query.startswith("#") and (serial_match or author_match))
+
+        visible_orders = [order for order in visible_orders if matches(order)]
     visible_orders = sorted(visible_orders, key=lambda order: order["number"])
     sizes = (5,) if search_query else (5, 4, 3, 2)
     grouped_orders = "\n".join(
-        _order_results(visible_orders, journey["authors"], page, article_id, query, size)
+        _order_results(visible_orders, journey["authors"], page, article_id, query, size, search_by)
         for size in sizes
     )
     body = render(
@@ -606,9 +611,10 @@ def orders_page(
         filter_notice=filter_notice,
         article_id=article_id,
         query=query,
+        search_by=search_by,
         orders_url_article_id_article_id=orders_url(article_id=article_id),
         grouped_orders=grouped_orders,
-        new_order_url=order_editor_url('', page, article_id, query),
+        new_order_url=order_editor_url('', page, article_id, query, search_by),
     )
     styles = render(
         'web/order_search_styles.html',

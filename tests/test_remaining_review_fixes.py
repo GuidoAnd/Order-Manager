@@ -138,6 +138,8 @@ def test_extreme_order_values_are_rejected_before_mutating_data(
     app, author = active
     store = app.state.store
     line = product(quantity=2)
+    if interface == "ui" and not editing:
+        store.open_batch(author["id"], "10", store.get_journey()["id"])
     order_id = store.save_order(author["id"], [line])["id"] if editing else ""
     before = store.get_journey()
     line[field] = value

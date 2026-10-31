@@ -1,0 +1,28 @@
+<tr>
+    <td data-label="Autor">{{ author.name }}</td>
+    <td data-label="Asignación">
+        {% if current %}Serie {{ current.series }} · Tanda {{ current.number }} · Abierta
+        {% elif author.get('batches', []) %}Tanda {{ author.get('batches', [])[-1].number }} cerrada. Sin tanda abierta.
+        {% else %}Sin serie ni tanda asignada.{% endif %}
+    </td>
+    <td data-label="Acciones">
+        {% if current %}
+        <a class="button quiet" href="/tandas/{{ author.id }}/{{ current.id }}/cerrar?batch_page={{ page }}">Cerrar tanda</a>
+        {% else %}
+        <form method="post" action="/ui/batches" class="batch-assignment">
+            <input type="hidden" name="batch_page" value="{{ page }}">
+            <input type="hidden" name="journey_id" value="{{ journey_id }}">
+            <input type="hidden" name="author_id" value="{{ author.id }}">
+            <input type="hidden" name="previous_batch_id" value="{{ previous }}">
+            <label>Serie para {{ author.name }}
+                <select name="series" required>
+                    <option value="">Seleccionar serie</option>
+                    <option value="10">10 · 001–080</option>
+                    <option value="20">20 · 081–160</option>
+                </select>
+            </label>
+            <div class="actions"><button name="action" value="open">Asignar serie</button></div>
+        </form>
+        {% endif %}
+    </td>
+</tr>

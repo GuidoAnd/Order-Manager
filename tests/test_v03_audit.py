@@ -336,7 +336,10 @@ def test_legacy_order_form_assigns_stable_identifiers_on_first_edit(tmp_path):
         html = request(app, "GET", url)[2]
         ids = re.findall(r'name="line_id_\d+" value="([^"]+)"', html)
         assert ids == [line_identifier(order["id"], i, line) for i, line in enumerate(saved["lines"])]
-        assert request(app, "GET", url)[2] == html
+        reopened = request(app, "GET", url)[2]
+        token_pattern = r'name="editor_token" value="[^"]+"'
+        assert re.search(token_pattern, html)[0] != re.search(token_pattern, reopened)[0]
+        assert re.sub(token_pattern, '', reopened) == re.sub(token_pattern, '', html)
         assert store._state() == before
         changed = store.save_order(author["id"], [{**rows[1], "line_id": ids[1]}], order["id"])
         assert changed["lines"][0]["line_id"] == ids[1]

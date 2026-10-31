@@ -71,7 +71,10 @@ Los datos persistentes se conservan. El procedimiento está en la
 ### Controles conservados
 
 La excepción conserva el resto de los controles y no incorpora autenticación,
-HTTPS, sesiones ni detección de conflictos de edición. No representa la
+HTTPS ni sesiones. Por sí sola no incorpora detección de conflictos; el editor
+HTML de v0.3.1 agrega protección frente a formularios obsoletos y reenvíos según
+[ADR-006](ADR-006-jinja2-e-interfaces-de-ordenes.md), sin exigir versiones esperadas
+a todos los clientes API. La excepción no representa la
 implementación de las etapas futuras. Quien alcance el servicio podrá operar
 como supervisor; se conserva una instancia y un worker.
 

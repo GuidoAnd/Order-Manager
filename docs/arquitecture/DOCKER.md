@@ -50,7 +50,7 @@ variantes usando un builder configurado para ellas:
 ```bash
 docker buildx build --platform linux/amd64,linux/arm64 \
   --build-arg APP_UID=10001 --build-arg APP_GID=10001 \
-  --tag order-manager:0.3 --output type=oci,dest=order-manager-0.3.oci.tar .
+  --tag order-manager:0.3.1 --output type=oci,dest=order-manager-0.3.1.oci.tar .
 ```
 
 El índice selecciona binarios de cada arquitectura. No mezcla ARM y AMD en una
@@ -58,6 +58,17 @@ misma ejecución. La variante Atom N270/linux/386 se entrega por separado, fuera
 del repositorio de aplicación; su contexto de construcción es la raíz de esta
 aplicación y requiere `--platform linux/386`. Compila pydantic-core y MarkupSafe,
 con herramientas fijadas y CPU SSE2. La construcción y ejecución de las imágenes corresponden al usuario.
+
+## Actualización a v0.3.1
+
+Detener el contenedor y respaldar el DATA_DIR completo antes de cambiar la versión.
+Actualizar el código, conservar `deployment.env`, construir y volver a ejecutar
+`up -d` con los comandos anteriores. Compose identifica la imagen como
+`order-manager:0.3.1`; su Dockerfile incluye los módulos, plantillas y estáticos
+de esta versión. No cambian las arquitecturas modernas, el usuario ni el montaje.
+Comprobar la versión de la interfaz y `info.version` en `/openapi.json`, además del
+healthcheck y la jornada recuperada. Un retroceso de versión requiere restaurar
+también datos compatibles; consultar [persistencia](PERSISTENCIA.md).
 
 ## Salud y conservación de datos
 

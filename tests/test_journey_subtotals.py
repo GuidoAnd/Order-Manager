@@ -172,7 +172,7 @@ async def check_tables(tmp_path, viewport):
             assert await orders.get_by_role("status").inner_text() == (
                 f"61 órdenes · Página 2 de {(61 + size - 1) // size}"
             )
-            assert await subtotals.locator('td[data-label="Bloque"]').first.inner_text() == str(size + 1)
+            assert await subtotals.locator('td[data-label="Bloque"]').first.inner_text() == f'Bloque {size + 1} sin tanda asignada'
             for link in await subtotals.get_by_role("link").all():
                 assert (await link.bounding_box())["height"] >= 44
             await assert_layout(page, viewport)

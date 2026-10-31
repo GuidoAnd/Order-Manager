@@ -26,7 +26,10 @@ from .export_formats import ExportFormat, download_file
 from .store import MAX_INPUT_INTEGER, DomainError, Store
 from .runtime_logging import LogConfig, RequestDiagnostics
 from .journey_navigation import JourneyNavigation
+from .order_editor import register_order_editor
+from .batch_ui import register_batch_ui
 from .health import HealthCheck
+from .notices import NoticeContext, OperationNotices, order_details
 from .security import LocalSecurity, MAX_FIELDS, parse_allowed_hosts
 from .input_validation import bounded_text
 
@@ -78,68 +81,13 @@ class LineInput(BaseModel):
 
 
 class OrderInput(BaseModel):
-    series: Literal["10", "20"]
+    series: Literal["10", "20"] | None = None
+    batch_id: str | None = None
     serial_number: NonBooleanInt = Field(ge=1, le=160)
     author_id: str
     status: Literal["sale", "not_billed"] = "sale"
     lines: list[LineInput] = Field(min_length=1, max_length=50)
 
-
-def order_form_rows(values: dict, count: int, inventory: dict) -> list[dict]:
-    rows = []
-    for index in range(count):
-        row = {
-            key: values.get(f"{key}_{index}", "")
-            for key in (
-                "source", "catalog_id", "line_id", "name", "category", "quantity",
-                "unit_price", "new_unit_price",
-            )
-        }
-        row["subcategories"] = {
-            str(position): values.get(f"subcategory_{index}_{position}", "")
-            for position in range(len(inventory["categories"]))
-        }
-        row["subcategory"] = next(
-            (row["subcategories"][str(position)]
-             for position, category in enumerate(inventory["categories"])
-             if category["name"] == row["category"]),
-            "",
-        )
-        rows.append(row)
-    return rows
-
-
-def order_form_lines(rows: list[dict], inventory: dict) -> list[dict]:
-    lines = []
-    for index, row in enumerate(rows, start=1):
-        if row["source"] == "inventory":
-            if not row["catalog_id"]:
-                raise DomainError(f"Artículo {index}: selecciona un artículo del inventario.")
-            line = {
-                key: row[key] for key in ("catalog_id", "quantity", "unit_price")
-            }
-        elif row["source"] == "new":
-            category = next(
-                (item for item in inventory["categories"] if item["name"] == row["category"]),
-                None,
-            )
-            if category is None:
-                raise DomainError(f"Artículo {index}: selecciona una categoría existente.")
-            if not any(
-                item["category_id"] == category["id"] and item["name"] == row["subcategory"]
-                for item in inventory["subcategories"]
-            ):
-                raise DomainError(f"Artículo {index}: selecciona una subcategoría de esa categoría.")
-            line = {
-                key: row[key] for key in ("name", "category", "subcategory", "quantity")
-            }
-            line["unit_price"] = row["new_unit_price"]
-        else:
-            raise DomainError(f"Artículo {index}: elige Del inventario o Nuevo producto.")
-        if row.get("line_id"):
-            line["line_id"] = row["line_id"]
-        lines.append(line)
-    return lines
 
 
 def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
@@ -158,7 +106,10 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
             store.runtime_log.record(logging.INFO, "Aplicación detenida.", "shutdown")
             store.runtime_log.close()
 
-    app = FastAPI(title="Order Manager", version="0.3", lifespan=lifespan)
+    app = FastAPI(title="Order Manager", version="0.3.1", lifespan=lifespan)
+    notices = OperationNotices()
+    app.state.operation_notices = notices
+    app.add_middleware(NoticeContext, notices=notices)
     app.add_middleware(RequestDiagnostics, runtime=store.runtime_log)
     app.add_middleware(LocalSecurity, token=token_urlsafe(32), runtime=store.runtime_log,
                        allowed_hosts=allowed_hosts)
@@ -183,7 +134,7 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
     async def domain_error(request: Request, error: DomainError):
         if not request.url.path.startswith("/api/"):
             title = "Almacenamiento no disponible" if error.status == 503 else "Acción no disponible"
-            return HTMLResponse(web.layout(title, web.alert(str(error))),
+            return HTMLResponse(web.layout(title, web.alert(str(error)), show_notice=False),
                                 status_code=error.status)
         return JSONResponse({"detail": str(error)}, status_code=error.status)
 
@@ -295,14 +246,14 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
     def create_order(data: OrderInput):
         return store.save_order(
             data.author_id, [line.model_dump() for line in data.lines], status=data.status,
-            series=data.series, serial_number=data.serial_number,
+            series=data.series, serial_number=data.serial_number, batch_id=data.batch_id,
         )
 
     @app.put("/api/orders/{order_id}")
     def update_order(order_id: str, data: OrderInput):
         lines = [line.model_dump() for line in data.lines]
         return store.save_order(data.author_id, lines, order_id, status=data.status,
-                                series=data.series, serial_number=data.serial_number)
+                                series=data.series, serial_number=data.serial_number, batch_id=data.batch_id)
 
     @app.delete("/api/orders/{order_id}", status_code=204)
     def delete_order(order_id: str):
@@ -343,6 +294,7 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
                 values = {**saved, **values}
         return web.journey_page(
             store, error=warning, navigation=navigation,
+            batch_page=values.get("batch_page", "1"),
             article_pages=web.journey_article_pages(values),
             order_pages=journey_results.page_values(values, "orders"),
             subtotal_pages=journey_results.page_values(values, "subtotals"),
@@ -351,19 +303,11 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
     @app.get("/ordenes", response_class=HTMLResponse)
     def orders_page(
         edit: str = "", article: str = "", page: int = Query(default=1, ge=1), q: str = "",
+        search_by: str = "all",
     ):
         if edit:
-            return RedirectResponse(web.order_editor_url(edit, page, article, q), status_code=303)
-        return web.orders_page(store, article_id=article, page=page, query=q)
-
-    @app.get("/ordenes/nueva", response_class=HTMLResponse)
-    def new_order(page: int = Query(default=1, ge=1), article: str = "", q: str = ""):
-        return web.orders_page(store, editor=True, page=page, article_id=article, query=q)
-
-    @app.get("/ordenes/{order_id}/editar", response_class=HTMLResponse)
-    def edit_order(order_id: str, page: int = Query(default=1, ge=1), article: str = "", q: str = ""):
-        return web.orders_page(store, editor=True, edit_id=order_id, page=page,
-                               article_id=article, query=q)
+            return RedirectResponse(web.order_editor_url(edit, page, article, q, search_by), status_code=303)
+        return web.orders_page(store, article_id=article, page=page, query=q, search_by=search_by)
 
     @app.get("/articulos", response_class=HTMLResponse)
     def articles_page(
@@ -385,7 +329,7 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
             return HTMLResponse(web.layout("Exportación no disponible", (
                 f'<p role="alert">{web.h(error)}</p>'
                 '<a class="button quiet" href="/">Volver al Dashboard</a>'
-            )), status_code=error.status)
+            ), show_notice=False), status_code=error.status)
         return web.closed_journey_page(journey_id, store._export_close_id)
 
     @app.get("/confirmar/{action}", response_class=HTMLResponse)
@@ -410,12 +354,15 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
         values = await fields(request)
         try:
             action = values.get("action")
+            details = {}
             if action == "create":
                 store.create_journey(values.get("title", ""))
             elif action == "rename":
                 store.rename_journey(values.get("title", ""), values.get("journey_id", ""))
             elif action == "add_author":
-                store.add_author(values.get("name", ""))
+                with store.lock:
+                    author = store.add_author(values.get("name", ""))
+                    details = {"author": author["name"], "journey": store.get_journey()["title"]}
             elif action == "rename_author":
                 store.rename_author(
                     values.get("author_id", ""),
@@ -426,18 +373,24 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
             elif action == "close" and values.get("confirm") == "yes":
                 journey_id = values.get("journey_id", "")
                 store.close_journey(journey_id)
-                return RedirectResponse(
-                    "/exportaciones?" + urlencode({"journey_id": journey_id, "close_id": store._export_close_id}),
-                    status_code=303,
-                )
+                target = "/exportaciones?" + urlencode({
+                    "journey_id": journey_id, "close_id": store._export_close_id,
+                })
+                return RedirectResponse(notices.url(target, "journey_closed"), status_code=303)
             elif action == "recover" and values.get("confirm") == "yes":
-                store.recover_journey(values.get("close_id", ""), values.get("revision", ""),
-                                      values.get("active_id", ""))
+                recovered = store.recover_journey(
+                    values.get("close_id", ""), values.get("revision", ""), values.get("active_id", ""),
+                )
+                details = {"journey": recovered["title"]}
             elif action == "discard" and values.get("confirm") == "yes":
                 store.discard_journey(values.get("journey_id", ""))
             else:
                 raise DomainError("Acción no reconocida.")
-            return RedirectResponse("/jornada", status_code=303)
+            code = {"create": "journey_created", "rename": "journey_updated",
+                    "add_author": "author_created", "rename_author": "author_updated",
+                    "delete_author": "author_deleted", "recover": "journey_recovered",
+                    "discard": "journey_discarded"}[action]
+            return RedirectResponse(notices.url("/jornada", code, **details), status_code=303)
         except DomainError as error:
             rename_title = values.get("title", "") if values.get("action") == "rename" else None
             return HTMLResponse(
@@ -452,6 +405,7 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
         values = await fields(request)
         search = ArticleSearch.from_form(values)
         try:
+            details = {}
             if values.get("action") == "delete":
                 store.delete_article(values.get("article_id", ""))
             else:
@@ -483,10 +437,14 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
                 ):
                     raise DomainError("Selecciona una subcategoría de esa categoría.")
                 if values.get("article_id"):
-                    store.update_article(values["article_id"], data)
+                    article = store.update_article(values["article_id"], data)
+                    details = {"article": article["name"]}
                 else:
                     store.add_article(data)
-            return RedirectResponse(search.url() + "#article-results", status_code=303)
+            code = ("article_deleted" if values.get("action") == "delete" else
+                    "article_updated" if values.get("article_id") else "article_created")
+            target = search.url() + "#article-results"
+            return RedirectResponse(notices.url(target, code, **details), status_code=303)
         except DomainError as error:
             return HTMLResponse(
                 web.articles_page(
@@ -506,7 +464,7 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
             page = 1
         return {
             "page": page, "article_id": values.get("article", ""),
-            "query": values.get("q", ""),
+            "query": values.get("q", ""), "search_by": values.get("search_by", "all"),
         }
 
     @app.post("/ui/orders/delete")
@@ -514,73 +472,22 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
         values = await fields(request)
         state = order_list_state(values)
         try:
-            store.delete_order(values.get("order_id", ""))
-            return RedirectResponse(web.orders_url(**state) + "#order-results", status_code=303)
+            with store.lock:
+                journey = store.get_journey() or {"orders": [], "authors": []}
+                order = next((item for item in journey["orders"]
+                              if item["id"] == values.get("order_id", "")), None)
+                store.delete_order(values.get("order_id", ""))
+                details = order_details(order, journey)
+            target = web.orders_url(**state) + "#order-results"
+            return RedirectResponse(notices.url(target, "order_deleted", **details), status_code=303)
         except DomainError as error:
             return HTMLResponse(
                 web.orders_page(store, error=str(error), **state),
                 status_code=error.status,
             )
 
-    @app.post("/ui/orders/form")
-    async def order_form(request: Request):
-        values = await fields(request)
-        rows = None
-        state = order_list_state(values)
-        try:
-            count = int(values.get("count", "1"))
-            if count < 1 or count > 50:
-                raise DomainError("Número de líneas inválido.")
-            inventory = store.get_order_inventory(values.get("order_id", ""))
-            rows = order_form_rows(values, count, inventory)
-            action = values.get("action", "")
-            if action == "add":
-                if len(rows) == 50:
-                    raise DomainError("La orden admite hasta 50 líneas.")
-                rows.append({})
-            elif action.startswith("remove_"):
-                rows.pop(int(action.split("_", 1)[1]))
-                if not rows:
-                    rows = [{}]
-            elif action == "save":
-                store.save_order(
-                    values.get("author_id", ""),
-                    order_form_lines(rows, inventory),
-                    values.get("order_id") or None,
-                    status=values.get("order_status", "sale"),
-                    series=values.get("series", ""), serial_number=values.get("serial_number", ""),
-                )
-                return RedirectResponse(web.orders_url(**state) + "#order-results", status_code=303)
-            else:
-                raise DomainError("Acción no reconocida.")
-            page = web.orders_page(
-                store,
-                rows,
-                values.get("author_id", ""),
-                values.get("order_id", ""),
-                order_status=values.get("order_status", "sale"),
-                editor=True, series=values.get("series", ""),
-                serial_number=values.get("serial_number", ""),
-                **state,
-            )
-            return HTMLResponse(page)
-        except (DomainError, ValueError, IndexError) as error:
-            status = error.status if isinstance(error, DomainError) else 400
-            return HTMLResponse(
-                web.orders_page(
-                    store,
-                    rows=rows,
-                    author_id=values.get("author_id", ""),
-                    edit_id=values.get("order_id", ""),
-                    error=str(error) if isinstance(error, DomainError) else "Datos de línea inválidos.",
-                    order_status=values.get("order_status", "sale"),
-                    editor=True, series=values.get("series", ""),
-                    serial_number=values.get("serial_number", ""),
-                    **state,
-                ),
-                status_code=status,
-            )
-
+    register_batch_ui(app, store, fields, notices)
+    register_order_editor(app, store, fields, notices)
     return app
 
 

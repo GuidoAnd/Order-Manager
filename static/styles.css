@@ -376,7 +376,7 @@ button:hover, .button:hover {
 }
 
 .article-search button, .article-search .button,
-.order-search button, .order-search .button,
+.order-search button, .order-search .button, .order-search select, .order-search input,
 .pagination .button, .responsive-table button, .responsive-table .button {
     min-height: 44px;
 }
@@ -776,3 +776,182 @@ footer {
 
 .field-error { color: #a32020; font-weight: 600; }
 [aria-invalid="true"] { border-color: #a32020; }
+
+/* Selección de artículos del editor. */
+.picker-page {
+    display: none;
+}
+.picker-page-2 {
+    display: block;
+}
+.picker-filters, .picker-cards {
+    display: grid;
+    gap: 1rem;
+}
+.picker-card, .picker-summary, .chosen-article {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.picker-card legend {
+    max-width: 100%;
+}
+.picker-choice {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    min-height: 44px;
+}
+.picker-choice input {
+    width: 24px;
+    height: 24px;
+    flex: 0 0 24px;
+}
+.picker-summary summary {
+    min-height: 44px;
+    cursor: pointer;
+}
+.picker-summary li {
+    margin-bottom: .75rem;
+}
+.picker-actions {
+    margin-top: 1.5rem;
+}
+@media (min-width: 375px) {
+    .picker-page-2 { display: none; }
+    .picker-page-3 { display: block; }
+}
+@media (min-width: 651px) {
+    .picker-page-3 { display: none; }
+    .picker-page-4 { display: block; }
+    .picker-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1024px) {
+    .picker-page-4 { display: none; }
+    .picker-page-5 { display: block; }
+}
+
+.operation-notice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem 1rem;
+    padding: .75rem 1rem;
+    margin-bottom: 1rem;
+    border-left: 4px solid #247045;
+    background: #eaf6ee;
+    color: #173e29;
+    overflow-wrap: anywhere;
+    scroll-margin-top: 1rem;
+    animation: operation-notice-hide 0s linear 8s forwards;
+}
+.operation-notice p {
+    margin: 0;
+    flex: 1 1 15rem;
+}
+@keyframes operation-notice-hide {
+    to {
+        visibility: hidden;
+        max-height: 0;
+        padding: 0;
+        margin: 0;
+        border-width: 0;
+        overflow: hidden;
+    }
+}
+
+.download-confirmation .confirmation-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+.download-confirmation .confirmation-actions > button,
+.download-confirmation .confirmation-actions > a,
+.export-form .actions > button,
+.export-form .actions > a {
+    min-height: 44px;
+    text-align: center;
+}
+.download-confirmation .confirmation-actions > a,
+.export-form .actions > a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+@media (max-width: 650px) {
+    main:has(> .download-confirmation) > h1,
+    main:has(> .download-panel) > h1,
+    .download-confirmation,
+    .download-panel,
+    .export-form legend,
+    .export-options label {
+        text-align: center;
+    }
+    .export-form legend {
+        width: 100%;
+    }
+    .download-confirmation .confirmation-actions,
+    .export-form .actions {
+        flex-direction: column;
+        align-items: center;
+        gap: 1.5rem;
+        margin-top: 1.5rem;
+    }
+    .download-confirmation .confirmation-actions > button,
+    .export-form .actions > button {
+        width: 100%;
+    }
+}
+
+.batch-panel {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #cbd3dc;
+}
+
+.batch-assignment .actions, .batch-confirmation .actions {
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.batch-panel select, .batch-panel button, .batch-panel .button,
+.batch-confirmation button, .batch-confirmation .button {
+    min-height: 44px;
+}
+
+.journey-final-panel {
+    text-align: right;
+}
+
+.journey-final-panel .actions {
+    justify-content: flex-end;
+}
+
+.order-actions {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #cbd3dc;
+    gap: 1.5rem;
+}
+
+@media (max-width: 650px) {
+    .batch-panel, .batch-panel td, .batch-confirmation, .journey-final-panel {
+        text-align: center;
+    }
+
+    .batch-panel .actions, .batch-confirmation .actions,
+    .journey-final-panel .actions, .order-actions {
+        flex-direction: column;
+        align-items: center;
+        gap: 1.5rem;
+    }
+
+    .batch-panel button, .batch-panel .button,
+    .batch-confirmation button, .batch-confirmation .button,
+    .journey-final-panel .button, .order-actions button, .order-actions .button {
+        width: 100%;
+        text-align: center;
+    }
+}

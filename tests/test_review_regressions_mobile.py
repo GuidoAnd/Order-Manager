@@ -46,7 +46,6 @@ async def check_review_fixes(tmp_path, viewport):
             await page.get_by_role("button", name="Agregar artículo", exact=True).click()
             await page.get_by_role("button", name="Quitar artículo", exact=True).last.click()
             quantity = page.locator('input[name="quantity_0"]')
-            await page.get_by_label("Serie", exact=True).select_option("10")
             await page.get_by_label("Numeración", exact=True).fill("001")
             await quantity.fill(str(MAX_INPUT_INTEGER + 1))
             await page.get_by_role("button", name="Guardar orden", exact=True).click()

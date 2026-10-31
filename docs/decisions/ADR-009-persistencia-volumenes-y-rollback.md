@@ -45,6 +45,25 @@ DATA_DIR coincide con su destino. Mantener una instancia y un worker.
 - La pérdida del disco requiere restauración externa.
 - Para múltiples instancias se necesitan persistencia y concurrencia compartidas.
 
+## Actualización — v0.3.1, 2026-10-31
+
+Persistir las tandas de cada autor y las referencias de sus órdenes dentro de
+las mismas revisiones JSON. Validar pertenencia, serie, numeración y única tanda
+abierta. Confirmar aperturas y cierres por acción, con la atomicidad existente.
+
+Al finalizar la jornada, cerrar las tandas abiertas en el documento exportado
+con la misma fecha de cierre; conservar las fechas de las ya cerradas. Guardar
+para rollback el estado anterior exacto, sin aplicar esos cierres a su snapshot.
+Recuperar restaura las tandas previamente abiertas. Un fallo de exportación o
+persistencia no confirma el cierre parcial.
+
+Aceptar datos anteriores sin asignar tandas retrospectivamente ni reescribir
+exportaciones. Mantener esquema persistido `1` y formato de descarga `v0.2`, con
+campos adicionales cuando corresponda. Una vuelta de versión exige restaurar
+una copia completa compatible: el código anterior desconoce estas referencias.
+Los borradores del editor no son órdenes confirmadas y permanecen fuera de la
+persistencia, según [ADR-006](ADR-006-jinja2-e-interfaces-de-ordenes.md).
+
 ## Revisar cuando
 - Se necesiten varios escritores, consultas históricas o mayores garantías transaccionales.
 

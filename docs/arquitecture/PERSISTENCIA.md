@@ -1,4 +1,4 @@
-# Persistencia y recuperación — v0.3
+# Persistencia y recuperación — v0.3.1
 
 La aplicación confirma cada acción válida mediante una revisión JSON íntegra.
 La memoria es estado de trabajo; la recuperación usa archivos bajo `DATA_DIR`.
@@ -54,12 +54,22 @@ explícita. Guardar el editor sin cambiar el precio no lo actualiza desde el cat
 Las líneas nuevas usan el catálogo vigente. Las no facturadas mantienen importes
 nulos y no suman ventas, unidades ni promedios.
 
+Las tandas se guardan dentro de cada autor: ID, número por autor/jornada, serie,
+apertura y cierre. Las órdenes asignadas guardan `batch_id`; la validación verifica
+pertenencia al autor, serie y única tanda abierta. Abrir y cerrar tandas confirma
+una revisión como cualquier otra acción. Los borradores del editor y avisos son
+estados temporales separados: no reemplazan una orden confirmada ni se restauran
+desde DATA_DIR. Consultar [interfaz](FRONTEND.md).
+
 ## Cierre y rollback
 
 Un cierre publica juntos el estado previo recuperable, los acumulados, la última
 exportación y la ausencia de jornada activa. El rollback restaura la jornada
 inmediatamente anterior al cierre y sus acumulados anteriores. Conserva el
-inventario vigente, incluidos artículos y precios posteriores.
+inventario vigente, incluidos artículos y precios posteriores. Las tandas abiertas
+se cierran en la exportación con la fecha del cierre de jornada; las ya cerradas
+conservan su fecha. El snapshot previo conserva cuáles estaban abiertas y las
+restaura así durante el rollback. Un fallo no confirma un cierre parcial.
 
 Si existe una jornada abierta, se descarta sin contabilizar ventas. La advertencia
 identifica ambas jornadas; Confirmar recuperación y Cancelar son acciones distintas.
@@ -76,7 +86,7 @@ ofrecer archivos; las descargas ya realizadas permanecen como estaban.
 `journey_id` y `format`; los formularios incluyen el ID de cierre para rechazar
 un selector antiguo incluso si se vuelve a cerrar la misma jornada.
 El esquema de exportación sigue identificado como `v0.2` por compatibilidad;
-la versión de la aplicación es `0.3`.
+la versión de la aplicación es `0.3.1`.
 
 ## Historial y fallos
 
@@ -108,6 +118,14 @@ Con los JSON de v0.2 y sin manifiesto, el arranque valida e importa inventario y
 acumulados a la primera revisión. Los originales se conservan; después el manifiesto
 es la única referencia activa. Una instalación realmente nueva recibe el catálogo
 inicial. La migración no recupera jornadas o descargas que v0.2 no guardó.
+
+v0.3.1 lee autores y órdenes anteriores sin exigir tandas ni asignarlas
+retrospectivamente. La lectura no reescribe por sí misma la revisión; se conservan
+exportaciones previas. El esquema persistido sigue siendo `1` y el JSON de cierre
+`v0.2`, con campos de tanda adicionales cuando corresponda. No se garantiza usar
+una versión anterior de la aplicación sobre datos que ya tienen tandas: esa versión
+desconoce sus reglas y podría guardar referencias incoherentes. Para volver de
+versión se debe restaurar también una copia completa anterior al cambio.
 
 Para una copia consistente, detener la única instancia y copiar todo `DATA_DIR`,
 incluidos manifiestos, revisiones e historial. Para restaurar, detener la aplicación,

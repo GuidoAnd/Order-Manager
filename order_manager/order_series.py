@@ -23,3 +23,13 @@ def serial_label(order: dict) -> str:
     if order.get("series") is None:
         return ""
     return f"Serie {order['series']} · {order['serial_number']:03d}"
+
+
+def legacy_series(number: object) -> str:
+    """Permite corregir órdenes anteriores que todavía no tenían serie ni tanda."""
+    if isinstance(number, bool) or not str(number).isascii() or not str(number).isdecimal():
+        raise ValueError("Numeración: ingrese un entero entre 001 y 160.")
+    digits = str(number).lstrip("0") or "0"
+    if len(digits) > 3 or not 1 <= int(digits) <= 160:
+        raise ValueError("Numeración: ingrese un entero entre 001 y 160.")
+    return "10" if int(digits) <= 80 else "20"

@@ -1,8 +1,10 @@
 # Gestor de órdenes
 
-Aplicación web MVP para que un supervisor gestione jornadas, autores, órdenes y artículos. Cada orden admite varios artículos con cantidad y precio unitario. Calcula totales y estadísticas, y permite exportar la jornada en JSON, CSV resumen y CSV detallado, individualmente o juntos en ZIP.
-
-La aplicación está planteada con FastAPI y Uvicorn y una interfaz HTML/CSS. La jornada, el catálogo, los acumulados y la última exportación se guardan en revisiones JSON locales y se recuperan tras reiniciar. La aplicación no incluye autenticación ni una base de datos compartida.
+Aplicación web MVP desarrollada principalmente en Python, con FastAPI, Uvicorn
+y una interfaz HTML/CSS, para que un supervisor gestione jornadas, autores,
+órdenes y artículos. Cada orden admite varios artículos con cantidad y precio
+unitario. Calcula totales y estadísticas, y permite exportar la jornada en JSON,
+CSV resumen y CSV detallado, individualmente o juntos en ZIP.
 
 ## Versiones
 
@@ -11,34 +13,54 @@ La aplicación está planteada con FastAPI y Uvicorn y una interfaz HTML/CSS. La
 | v0.1 | Implementada | Módulos integrados de jornadas, autores, órdenes, artículos, ventas y estadísticas. |
 | v0.2 | Implementada; revisión final documentada | Inventario persistente, resultados por autor, interfaz móvil paginada, órdenes no facturadas y exportación JSON, dos CSV o ZIP. |
 | v0.3 | Implementada; cierre documentado | Persistencia por acción, rollback y logging configurable; healthcheck, seguridad local y frontend Jinja2; empaquetado Docker multiarquitectura. |
+| v0.3.1 | Implementada; cierre y validación final documentados | Guardado protegido, selector de artículos, avisos, buscador de órdenes y tandas con subtotales; ajustes móviles. |
 | v1.0 | Planificada | Versión final prevista del MVP. |
 
-La versión actual es v0.3; la API expone `0.3`. Su cierre se documentó el
-2026-10-18, con **501 pruebas aprobadas**, sin fallos, errores ni omisiones.
-El [resumen de versión](docs/version/v0_3.md) describe el alcance y la
-[validación final](docs/tests/v0_3/V0_3_FINAL_REVIEW_20261018T221853Z.md).
-El cierre permite elegir JSON, CSV resumen, CSV detallado o los tres en ZIP.
-Registros permite repetir la última descarga sin volver a contabilizar ventas.
+La versión actual es **v0.3.1**, considerada versión menor según la convención
+propia del proyecto. La interfaz y la API/OpenAPI exponen `0.3.1`.
+El [resumen de versión](docs/version/v0_3_1.md) describe las mejoras de carga,
+búsqueda, tandas y subtotales. El historial de v0.3 permanece en su
+[resumen](docs/version/v0_3.md).
+La [validación final](docs/tests/v0_3_1/V0_3_1_FINAL_REVIEW_20261031T193700Z.md)
+obtuvo **626 pruebas aprobadas en 512,29 s**, sin fallos, errores ni omisiones.
 
 ## Documentación
 
 - [Resumen de v0.1](docs/version/v0_1.md)
 - [Resumen de v0.2](docs/version/v0_2.md)
+- [Resumen de v0.3](docs/version/v0_3.md)
+- [Resumen de v0.3.1](docs/version/v0_3_1.md)
 - [Arquitectura](docs/ARQUITECTURE.md)
 - [Persistencia y recuperación](docs/arquitecture/PERSISTENCIA.md)
 - [Logging y troubleshooting](docs/arquitecture/LOGGING.md)
 - [Healthcheck y script operativo](docs/arquitecture/HEALTHCHECK.md)
 - [Seguridad para uso local](docs/arquitecture/SEGURIDAD.md)
+- [ADR de seguridad](docs/decisions/ADR-005-seguridad-local-y-escalabilidad.md)
 - [Interfaz, series y plantillas](docs/arquitecture/FRONTEND.md)
 - [Docker y montaje configurable](docs/arquitecture/DOCKER.md)
 - [Decisiones técnicas](docs/decisions/) — motivos, alternativas y consecuencias de cambios importantes.
 - [Informes de pruebas por versión](docs/tests/README.md)
 - [Auditorías](docs/audits/)
 
-La seguridad actual limita solicitudes y protege formularios; no autentica al
-supervisor. Se admite acceso temporal desde una LAN mediante hosts explícitos;
-las etapas con identidad, sesiones y control de conflictos continúan previstas en
-el [ADR de seguridad](docs/decisions/ADR-005-seguridad-local-y-escalabilidad.md).
+## Comentarios y críticas
+
+La aplicación, en su versión v0.3, fue probada en producción. La simplicidad de
+su despliegue y de la configuración de infraestructura facilitó su puesta en
+marcha. Su uso permitió reducir el tiempo dedicado a la gestión de órdenes en
+comparación con el método anterior.
+
+Durante las semanas de uso real de v0.3 también se identificaron dificultades
+que aumentaban el tiempo de carga de órdenes. Buscar artículos en una lista
+extensa del inventario y seleccionarlos de uno en uno exigía repetir pasos,
+especialmente en dispositivos móviles. La elección de la serie en cada orden
+agregaba otra tarea repetitiva. Además, la ausencia de notificaciones o avisos
+sobre los cambios y las acciones realizadas dificultaba confirmar su resultado.
+
+Estos problemas se comunicaron a partir de la experiencia de uso y motivaron
+el desarrollo de v0.3.1: selección de varios artículos mediante búsqueda y filtros,
+asignación previa de serie y tanda por autor, y avisos contextuales de las
+operaciones. Las mejoras buscan agilizar la carga y facilitar la confirmación
+de las acciones habituales.
 
 ## Desarrollo local
 
@@ -131,10 +153,3 @@ El contenedor incluye healthcheck. Para troubleshooting, configurar
 `down` conserva el directorio de datos del host; respaldarlo por separado.
 Consultar [Docker y datos persistentes](docs/arquitecture/DOCKER.md) para construcción
 multiarquitectura, permisos y copias de seguridad.
-
-## Comentarios
-
-La aplicación, en su versión v0.3, fue probada en producción. La simplicidad de
-su despliegue y de la configuración de infraestructura facilitó su puesta en
-marcha. Su uso permitió reducir el tiempo dedicado a la gestión de órdenes en
-comparación con el método anterior.

@@ -13,6 +13,26 @@ from test_export_formats import prepare
 from test_mobile import VIEWPORTS, assert_layout, serve_asgi
 
 
+async def assert_download_actions(page, viewport, *, confirmation=False):
+    group = page.locator('.download-confirmation .confirmation-actions' if confirmation
+                         else '.export-form .actions')
+    primary = await group.get_by_role('button').bounding_box()
+    secondary = await group.get_by_role('link').bounding_box()
+    assert primary['height'] >= 44 and secondary['height'] >= 44
+    if viewport[0] <= 650:
+        assert 20 <= secondary['y'] - primary['y'] - primary['height'] <= 40
+        assert abs(primary['x'] + primary['width'] / 2 - secondary['x'] - secondary['width'] / 2) <= 1
+        assert await page.locator('main > h1').evaluate('node => getComputedStyle(node).textAlign') == 'center'
+        panel = page.locator('.download-confirmation' if confirmation else '.download-panel')
+        for paragraph in await panel.locator(':scope > p').all():
+            assert await paragraph.evaluate('node => getComputedStyle(node).textAlign') == 'center'
+    else:
+        horizontal_gap = secondary['x'] - primary['x'] - primary['width']
+        vertical_gap = secondary['y'] - primary['y'] - primary['height']
+        assert horizontal_gap >= 16 or vertical_gap >= 16
+        assert await page.locator('main > h1').evaluate('node => getComputedStyle(node).textAlign') != 'center'
+
+
 async def check_downloads(tmp_path, viewport):
     app = make_app(tmp_path / "globals.json")
     journey_id = prepare(app)
@@ -28,6 +48,7 @@ async def check_downloads(tmp_path, viewport):
         try:
             await page.goto("http://127.0.0.1/confirmar/close")
             await assert_layout(page, viewport)
+            await assert_download_actions(page, viewport, confirmation=True)
             await page.get_by_role("link", name="Cancelar", exact=True).click()
             assert app.state.store.get_journey()["id"] == journey_id
             await page.goto("http://127.0.0.1/confirmar/close")
@@ -39,9 +60,12 @@ async def check_downloads(tmp_path, viewport):
             original = deepcopy(app.state.store.get_globals())
             assert await page.get_by_role("radio", name="Todo en ZIP").is_checked()
             await assert_layout(page, viewport)
+            await assert_download_actions(page, viewport)
             for label in await page.locator(".export-options label").all():
                 box = await label.bounding_box()
                 assert box["height"] >= 44
+                if viewport[0] <= 650:
+                    assert await label.evaluate('node => getComputedStyle(node).textAlign') == 'center'
             for name, suffix in (
                 ("CSV resumen", "-resumen.csv"), ("CSV detallado", "-detalle.csv"),
                 ("JSON completo", ".json"), ("Todo en ZIP", ".zip"),

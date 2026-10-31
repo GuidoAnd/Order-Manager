@@ -14,11 +14,18 @@ from order_manager.store import Store, article_statistics_key, fresh_globals
 from order_manager.web import article_statistics_label, articles_page
 
 
-def request(app, method, url, values=None, *, form=False, raw=False):
+def request(app, method, url, values=None, *, form=False, raw=False, follow_editor=True):
     if values is not None and method in ("POST", "PUT") and url.startswith("/api/orders"):
         values = {"series": "10", "serial_number": 1, **values}
     if form and url == "/ui/orders/form":
         values = {"series": "10", "serial_number": "001", **(values or {})}
+        if "editor_token" not in values:
+            path = (f"/ordenes/{values['order_id']}/editar" if values.get("order_id")
+                    else "/ordenes/nueva")
+            _, _, editor = request(app, "GET", path)
+            match = re.search(r'name="editor_token" value="([^"]+)"', editor)
+            if match:
+                values["editor_token"] = match.group(1)
     if form:
         _, _, page = request(app, "GET", "/jornada")
         token = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
@@ -53,6 +60,9 @@ def request(app, method, url, values=None, *, form=False, raw=False):
     start = next(message for message in messages if message["type"] == "http.response.start")
     response = b"".join(message.get("body", b"") for message in messages)
     headers = {key.decode(): value.decode() for key, value in start["headers"]}
+    if (follow_editor and form and url == "/ui/orders/form" and start["status"] == 303
+            and headers.get("location", "").startswith("/ordenes/borrador/")):
+        return request(app, "GET", headers["location"], raw=raw)
     return start["status"], headers, response if raw else response.decode()
 
 
@@ -60,7 +70,8 @@ def request(app, method, url, values=None, *, form=False, raw=False):
 def active_app(tmp_path):
     app = make_app(tmp_path / "globals.json")
     app.state.store.create_journey("Jornada A")
-    app.state.store.add_author("Ana")
+    author = app.state.store.add_author("Ana")
+    app.state.store.open_batch(author["id"], "10", app.state.store.get_journey()["id"])
     return app
 
 
@@ -122,7 +133,8 @@ def test_order_validation_retains_form_and_retry_does_not_duplicate(active_app, 
     assert page.count('<fieldset class="order-line">') == 2
     assert f'name="order_id" value="{order_id}"' in page
     assert f'<option value="{author["id"]}" selected>' in page
-    assert f'<option value="{coffee["id"]}" selected>' in page
+    assert f'name="catalog_id_0" value="{coffee["id"]}"' in page
+    assert f'<strong>{coffee["name"]}</strong>' in page
     assert 'name="name_1" value="Especial"' in page
     assert "<h2>Editar orden</h2>" in page if editing else "<h2>Crear orden</h2>" in page
     assert store.get_journey() == before
