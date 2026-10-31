@@ -72,7 +72,7 @@ def test_all_snapshots_of_saved_editor_are_consumed(app):
     next_key = re.search(r'name="editor_token" value="([^"]+)"', html).group(1)
     first = post(app, data)
     before = confirmed(app)
-    assert first[0] == 303 and '#order-results' in first[1]['location']
+    assert first[0] == 303 and '#operation-notice' in first[1]['location']
     for key in [data['editor_token'], next_key]:
         again = post(app, {**data, 'editor_token': key})
         assert again[:2] == first[:2]

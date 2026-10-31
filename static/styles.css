@@ -829,3 +829,78 @@ footer {
     .picker-page-4 { display: none; }
     .picker-page-5 { display: block; }
 }
+
+.operation-notice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem 1rem;
+    padding: .75rem 1rem;
+    margin-bottom: 1rem;
+    border-left: 4px solid #247045;
+    background: #eaf6ee;
+    color: #173e29;
+    overflow-wrap: anywhere;
+    scroll-margin-top: 1rem;
+    animation: operation-notice-hide 0s linear 8s forwards;
+}
+.operation-notice p {
+    margin: 0;
+    flex: 1 1 15rem;
+}
+@keyframes operation-notice-hide {
+    to {
+        visibility: hidden;
+        max-height: 0;
+        padding: 0;
+        margin: 0;
+        border-width: 0;
+        overflow: hidden;
+    }
+}
+
+.download-confirmation .confirmation-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+.download-confirmation .confirmation-actions > button,
+.download-confirmation .confirmation-actions > a,
+.export-form .actions > button,
+.export-form .actions > a {
+    min-height: 44px;
+    text-align: center;
+}
+.download-confirmation .confirmation-actions > a,
+.export-form .actions > a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+@media (max-width: 650px) {
+    main:has(> .download-confirmation) > h1,
+    main:has(> .download-panel) > h1,
+    .download-confirmation,
+    .download-panel,
+    .export-form legend,
+    .export-options label {
+        text-align: center;
+    }
+    .export-form legend {
+        width: 100%;
+    }
+    .download-confirmation .confirmation-actions,
+    .export-form .actions {
+        flex-direction: column;
+        align-items: center;
+        gap: 1.5rem;
+        margin-top: 1.5rem;
+    }
+    .download-confirmation .confirmation-actions > button,
+    .export-form .actions > button {
+        width: 100%;
+    }
+}

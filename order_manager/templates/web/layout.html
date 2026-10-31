@@ -20,6 +20,11 @@
     </header>
     <main>
         <h1>{{ title }}</h1>
+        {% if notice %}
+        <aside class="operation-notice" id="operation-notice" role="status" tabindex="-1">
+            <p>{{ notice.message }}</p>
+        </aside>
+        {% endif %}
         {{ content | safe }}
     </main>
     <footer>Order Manager · v0.3</footer>

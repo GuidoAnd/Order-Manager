@@ -2,6 +2,7 @@
 
 import asyncio
 from copy import deepcopy
+from urllib.parse import urlsplit
 
 import pytest
 from playwright.async_api import async_playwright
@@ -23,7 +24,8 @@ def test_rename_preserves_journey_data(tmp_path):
          "journey_id": before["id"]}, form=True,
     )
     assert status == 303
-    assert headers["location"] == "/jornada"
+    assert urlsplit(headers["location"]).path == "/jornada"
+    assert "notice=" in headers["location"]
     after = store.get_journey()
     assert after["title"] == "Feria de jueves"
     for key in before.keys() - {"title", "events"}:

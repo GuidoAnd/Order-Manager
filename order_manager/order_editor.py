@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from . import web
 from .store import DomainError
 from .order_picker import register_order_picker
+from .notices import order_details
 
 
 class EditorDrafts:
@@ -113,7 +114,7 @@ def order_form_lines(rows: list[dict], inventory: dict) -> list[dict]:
     return lines
 
 
-def register_order_editor(app, store, fields):
+def register_order_editor(app, store, fields, notices):
     drafts = EditorDrafts()
     app.state.order_drafts = drafts
     open_picker = register_order_picker(app, store, fields, drafts)
@@ -216,12 +217,14 @@ def register_order_editor(app, store, fields):
                         if current != session["original"]:
                             raise DomainError("La orden cambió o fue eliminada desde que abrió el editor. "
                                               "No se guardaron sus cambios. Abra la versión actual para compararla.", 409)
-                    store.save_order(
+                    order = store.save_order(
                         values.get("author_id", ""), order_form_lines(rows, inventory),
                         session["order_id"] or None, status=values.get("order_status", "sale"),
                         series=values.get("series", ""), serial_number=values.get("serial_number", ""),
                     )
-                    session["result"] = web.orders_url(page, values.get("article", ""), values.get("q", "")) + "#order-results"
+                    target = web.orders_url(page, values.get("article", ""), values.get("q", "")) + "#order-results"
+                    code = "order_updated" if session["order_id"] else "order_created"
+                    session["result"] = notices.url(target, code, **order_details(order, journey))
                     return RedirectResponse(session["result"], status_code=303)
                 else:
                     raise DomainError("Acción no reconocida.")

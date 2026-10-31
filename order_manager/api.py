@@ -28,6 +28,7 @@ from .runtime_logging import LogConfig, RequestDiagnostics
 from .journey_navigation import JourneyNavigation
 from .order_editor import register_order_editor
 from .health import HealthCheck
+from .notices import NoticeContext, OperationNotices, order_details
 from .security import LocalSecurity, MAX_FIELDS, parse_allowed_hosts
 from .input_validation import bounded_text
 
@@ -104,6 +105,9 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
             store.runtime_log.close()
 
     app = FastAPI(title="Order Manager", version="0.3", lifespan=lifespan)
+    notices = OperationNotices()
+    app.state.operation_notices = notices
+    app.add_middleware(NoticeContext, notices=notices)
     app.add_middleware(RequestDiagnostics, runtime=store.runtime_log)
     app.add_middleware(LocalSecurity, token=token_urlsafe(32), runtime=store.runtime_log,
                        allowed_hosts=allowed_hosts)
@@ -128,7 +132,7 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
     async def domain_error(request: Request, error: DomainError):
         if not request.url.path.startswith("/api/"):
             title = "Almacenamiento no disponible" if error.status == 503 else "Acción no disponible"
-            return HTMLResponse(web.layout(title, web.alert(str(error))),
+            return HTMLResponse(web.layout(title, web.alert(str(error)), show_notice=False),
                                 status_code=error.status)
         return JSONResponse({"detail": str(error)}, status_code=error.status)
 
@@ -321,7 +325,7 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
             return HTMLResponse(web.layout("Exportación no disponible", (
                 f'<p role="alert">{web.h(error)}</p>'
                 '<a class="button quiet" href="/">Volver al Dashboard</a>'
-            )), status_code=error.status)
+            ), show_notice=False), status_code=error.status)
         return web.closed_journey_page(journey_id, store._export_close_id)
 
     @app.get("/confirmar/{action}", response_class=HTMLResponse)
@@ -346,12 +350,15 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
         values = await fields(request)
         try:
             action = values.get("action")
+            details = {}
             if action == "create":
                 store.create_journey(values.get("title", ""))
             elif action == "rename":
                 store.rename_journey(values.get("title", ""), values.get("journey_id", ""))
             elif action == "add_author":
-                store.add_author(values.get("name", ""))
+                with store.lock:
+                    author = store.add_author(values.get("name", ""))
+                    details = {"author": author["name"], "journey": store.get_journey()["title"]}
             elif action == "rename_author":
                 store.rename_author(
                     values.get("author_id", ""),
@@ -362,18 +369,24 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
             elif action == "close" and values.get("confirm") == "yes":
                 journey_id = values.get("journey_id", "")
                 store.close_journey(journey_id)
-                return RedirectResponse(
-                    "/exportaciones?" + urlencode({"journey_id": journey_id, "close_id": store._export_close_id}),
-                    status_code=303,
-                )
+                target = "/exportaciones?" + urlencode({
+                    "journey_id": journey_id, "close_id": store._export_close_id,
+                })
+                return RedirectResponse(notices.url(target, "journey_closed"), status_code=303)
             elif action == "recover" and values.get("confirm") == "yes":
-                store.recover_journey(values.get("close_id", ""), values.get("revision", ""),
-                                      values.get("active_id", ""))
+                recovered = store.recover_journey(
+                    values.get("close_id", ""), values.get("revision", ""), values.get("active_id", ""),
+                )
+                details = {"journey": recovered["title"]}
             elif action == "discard" and values.get("confirm") == "yes":
                 store.discard_journey(values.get("journey_id", ""))
             else:
                 raise DomainError("Acción no reconocida.")
-            return RedirectResponse("/jornada", status_code=303)
+            code = {"create": "journey_created", "rename": "journey_updated",
+                    "add_author": "author_created", "rename_author": "author_updated",
+                    "delete_author": "author_deleted", "recover": "journey_recovered",
+                    "discard": "journey_discarded"}[action]
+            return RedirectResponse(notices.url("/jornada", code, **details), status_code=303)
         except DomainError as error:
             rename_title = values.get("title", "") if values.get("action") == "rename" else None
             return HTMLResponse(
@@ -388,6 +401,7 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
         values = await fields(request)
         search = ArticleSearch.from_form(values)
         try:
+            details = {}
             if values.get("action") == "delete":
                 store.delete_article(values.get("article_id", ""))
             else:
@@ -419,10 +433,14 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
                 ):
                     raise DomainError("Selecciona una subcategoría de esa categoría.")
                 if values.get("article_id"):
-                    store.update_article(values["article_id"], data)
+                    article = store.update_article(values["article_id"], data)
+                    details = {"article": article["name"]}
                 else:
                     store.add_article(data)
-            return RedirectResponse(search.url() + "#article-results", status_code=303)
+            code = ("article_deleted" if values.get("action") == "delete" else
+                    "article_updated" if values.get("article_id") else "article_created")
+            target = search.url() + "#article-results"
+            return RedirectResponse(notices.url(target, code, **details), status_code=303)
         except DomainError as error:
             return HTMLResponse(
                 web.articles_page(
@@ -450,15 +468,21 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
         values = await fields(request)
         state = order_list_state(values)
         try:
-            store.delete_order(values.get("order_id", ""))
-            return RedirectResponse(web.orders_url(**state) + "#order-results", status_code=303)
+            with store.lock:
+                journey = store.get_journey() or {"orders": [], "authors": []}
+                order = next((item for item in journey["orders"]
+                              if item["id"] == values.get("order_id", "")), None)
+                store.delete_order(values.get("order_id", ""))
+                details = order_details(order, journey)
+            target = web.orders_url(**state) + "#order-results"
+            return RedirectResponse(notices.url(target, "order_deleted", **details), status_code=303)
         except DomainError as error:
             return HTMLResponse(
                 web.orders_page(store, error=str(error), **state),
                 status_code=error.status,
             )
 
-    register_order_editor(app, store, fields)
+    register_order_editor(app, store, fields, notices)
     return app
 
 

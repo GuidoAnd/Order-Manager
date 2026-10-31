@@ -20,6 +20,7 @@ from . import journey_results, table_pages
 from .article_search import ArticleSearch, article_identity, searchable
 from .store import DomainError, Store, is_sale, summary
 from .security import protect_forms
+from .notices import CURRENT_NOTICE
 
 
 STYLESHEET = Path(__file__).resolve().parent.parent / "static" / "styles.css"
@@ -72,7 +73,7 @@ def stylesheet_url() -> str:
     return "/static/styles.css?" + urlencode({"v": version})
 
 
-def layout(title: str, content: str, head: str = "") -> str:
+def layout(title: str, content: str, head: str = "", *, show_notice: bool = True) -> str:
     content = protect_forms(content)
     sections = (
         ("/", "Dashboard"),
@@ -88,6 +89,7 @@ def layout(title: str, content: str, head: str = "") -> str:
         head=head,
         sections=sections,
         content=content,
+        notice=CURRENT_NOTICE.get() if show_notice else None,
     )
 
 
