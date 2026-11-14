@@ -11,6 +11,7 @@ from pathlib import Path
 from threading import RLock
 from uuid import uuid4
 
+from . import __version__
 from .article_search import article_identity
 from .order_lines import line_identifier
 from .order_series import validate_serial
@@ -307,7 +308,7 @@ class Store:
         raise DomainError(f"{name} no encontrado.", 404)
 
     def _event(self, action: str, detail: str, journey_event: bool = True) -> None:
-        entry = {"at": now(), "action": action, "detail": detail}
+        entry = {"at": now(), "action": action, "detail": detail, "app_version": __version__}
         journey = self._active()
         if journey_event:
             journey["events"].append(entry)

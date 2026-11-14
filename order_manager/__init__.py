@@ -1,1 +1,3 @@
-"""Order Manager v0.1."""
+"""Order Manager."""
+
+__version__ = "0.3.2"

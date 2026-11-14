@@ -14,15 +14,14 @@ CSV resumen y CSV detallado, individualmente o juntos en ZIP.
 | v0.2 | Implementada; revisión final documentada | Inventario persistente, resultados por autor, interfaz móvil paginada, órdenes no facturadas y exportación JSON, dos CSV o ZIP. |
 | v0.3 | Implementada; cierre documentado | Persistencia por acción, rollback y logging configurable; healthcheck, seguridad local y frontend Jinja2; empaquetado Docker multiarquitectura. |
 | v0.3.1 | Implementada; cierre y validación final documentados | Guardado protegido, selector de artículos, avisos, buscador de órdenes y tandas con subtotales; ajustes móviles. |
+| v0.3.2 | Implementada; cierre y validación final documentados | Optimización de interfaz, búsqueda por artículo y versión en registros. |
 | v1.0 | Planificada | Versión final prevista del MVP. |
 
-La versión actual es **v0.3.1**, considerada versión menor según la convención
-propia del proyecto. La interfaz y la API/OpenAPI exponen `0.3.1`.
-El [resumen de versión](docs/version/v0_3_1.md) describe las mejoras de carga,
-búsqueda, tandas y subtotales. El historial de v0.3 permanece en su
-[resumen](docs/version/v0_3.md).
-La [validación final](docs/tests/v0_3_1/V0_3_1_FINAL_REVIEW_20261031T193700Z.md)
-obtuvo **626 pruebas aprobadas en 512,29 s**, sin fallos, errores ni omisiones.
+La versión actual es **v0.3.2**. La interfaz, la API/OpenAPI y los registros
+nuevos exponen `0.3.2`. Consultar el [resumen de v0.3.2](docs/version/v0_3_2.md)
+para los cambios de interfaz y logs.
+La [validación final de v0.3.2](docs/tests/v0_3_2/V0_3_2_FINAL_REVIEW_20261114T183813Z.md) obtuvo
+**642 pruebas aprobadas en 520,76 s**, sin fallos, errores ni omisiones.
 
 ## Documentación
 
@@ -30,6 +29,7 @@ obtuvo **626 pruebas aprobadas en 512,29 s**, sin fallos, errores ni omisiones.
 - [Resumen de v0.2](docs/version/v0_2.md)
 - [Resumen de v0.3](docs/version/v0_3.md)
 - [Resumen de v0.3.1](docs/version/v0_3_1.md)
+- [Resumen de v0.3.2](docs/version/v0_3_2.md)
 - [Arquitectura](docs/ARQUITECTURE.md)
 - [Persistencia y recuperación](docs/arquitecture/PERSISTENCIA.md)
 - [Logging y troubleshooting](docs/arquitecture/LOGGING.md)

@@ -26,8 +26,8 @@ almacenamiento persistente; esta configuración no crea ni monta volúmenes.
 
 ## Contenido y niveles
 
-Todos los registros incluyen fecha UTC, nivel, mensaje y operación. Cuando
-corresponde, agregan ID de jornada, revisión, operación persistente, evento,
+Los nuevos registros incluyen fecha UTC, nivel, mensaje, operación y
+`app_version`, la versión de aplicación que los genera. Cuando corresponde, agregan ID de jornada, revisión, operación persistente, evento,
 formato de descarga, fase o estado HTTP.
 
 - **INFO:** inicialización y cierre del proceso, acciones confirmadas, proyección
@@ -56,6 +56,10 @@ Los logs propios de Uvicorn son independientes de estos archivos y configuració
 se elimina automáticamente. Se mantiene aunque cambie LOG_LEVEL o roten los
 archivos de diagnóstico. Su crecimiento requiere supervisión y copias de seguridad.
 La pantalla Registros consulta este historial y los eventos pendientes durables.
+Los nuevos eventos incluyen `app_version`, también en el JSON de cierre. Los
+anteriores no se reescriben ni reciben una versión inferida; un evento pendiente
+conserva su versión de origen al reintentarse. Este dato es independiente de
+`export_format`, que identifica el formato de exportación.
 
 Cada evento está vinculado a una operación confirmada. Si falla su archivo,
 permanece pendiente en la revisión y se reintenta al reiniciar o en la siguiente

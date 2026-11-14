@@ -16,7 +16,7 @@ from .templating import component, render
 from .order_lines import line_identifier
 from .order_series import serial_label
 
-from . import journey_results, table_pages
+from . import __version__, journey_results, table_pages
 from .article_search import ArticleSearch, article_identity, searchable
 from .store import DomainError, Store, is_sale, summary
 from .security import protect_forms
@@ -87,6 +87,7 @@ def layout(title: str, content: str, head: str = "", *, show_notice: bool = True
     return render(
         'web/layout.html',
         title=title,
+        app_version=__version__,
         stylesheet_url=stylesheet_url(),
         head=head,
         sections=sections,
@@ -487,7 +488,7 @@ def orders_page(
     editor_token: str = "", editor_context: dict | None = None,
     search_by: str = "all",
 ) -> str:
-    search_by = search_by if search_by in {"all", "author", "id", "serial"} else "all"
+    search_by = search_by if search_by in {"all", "author", "id", "serial", "product"} else "all"
     journey = editor_context["journey"] if editor_context else store.get_journey()
     if not journey:
         message = '<p>Primero <a href="/jornada">crea una jornada</a>.</p>'
@@ -591,13 +592,16 @@ def orders_page(
             )
             serial_match = numeric and normalized_number == str(order.get("serial_number"))
             author_match = search_query in searchable(names.get(order["author_id"], ""))
+            product_match = any(search_query in searchable(line["name"]) for line in order["lines"])
+            if search_by == "product":
+                return product_match
             if search_by == "id":
                 return order_id_match
             if search_by == "serial":
                 return not search_query.startswith("#") and serial_match
             if search_by == "author":
                 return author_match
-            return order_id_match or (not search_query.startswith("#") and (serial_match or author_match))
+            return order_id_match or (not search_query.startswith("#") and (serial_match or author_match or product_match))
 
         visible_orders = [order for order in visible_orders if matches(order)]
     visible_orders = sorted(visible_orders, key=lambda order: order["number"])
@@ -784,13 +788,14 @@ def _event_row(event: dict) -> str:
         event_at=event['at'],
         event_action=event['action'],
         event_detail=event['detail'],
+        event_app_version=event.get('app_version') or 'No registrada',
     )
 
 
 def events_page(store: Store, page: int = 1) -> str:
     events = store.get_events()
     table = table_pages.table_pages(
-        list(reversed(events)), page, ("Fecha", "Acción", "Detalle"),
+        list(reversed(events)), page, ("Fecha", "Acción", "Detalle", "Versión"),
         _event_row, lambda target: "/registros?" + urlencode({"page": target}),
         "movimientos", "Páginas de registros", "Sin movimientos.", "journey-events",
     )

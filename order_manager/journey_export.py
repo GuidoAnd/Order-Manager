@@ -2,6 +2,8 @@
 
 from copy import deepcopy
 
+from . import __version__
+
 
 def build_export(
     journey: dict, statistics: dict, new_articles: list[dict],
@@ -20,5 +22,6 @@ def build_export(
     })
     result["events"].append({
         "at": closed_at, "action": "journey_closed", "detail": journey["title"],
+        "app_version": __version__,
     })
     return result

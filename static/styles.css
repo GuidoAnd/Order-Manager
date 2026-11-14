@@ -270,7 +270,7 @@ button:hover, .button:hover {
 }
 
 .actions.order-actions {
-    gap: 1rem;
+    gap: 32px;
     margin-top: 1.5rem;
     padding-top: 1.5rem;
     border-top: 1px solid #d8e0e8;
@@ -813,8 +813,43 @@ footer {
 .picker-summary li {
     margin-bottom: .75rem;
 }
-.picker-actions {
+.actions.order-pick-actions {
+    justify-content: center;
+    margin: 1.5rem 0;
+}
+.order-pick-actions button {
+    min-height: 56px;
+    width: min(100%, 24rem);
+    padding: 1rem 1.5rem;
+    font-size: 1.1rem;
+    text-align: center;
+}
+.picker-page .pagination {
+    gap: 1.5rem;
     margin-top: 1.5rem;
+    margin-bottom: 2rem;
+}
+.actions.picker-actions {
+    gap: 32px;
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #d8e0e8;
+}
+.picker-page .pagination button, .picker-actions button, .picker-actions .button {
+    min-height: 48px;
+    text-align: center;
+}
+.picker-page .pagination button[value="next"] {
+    margin-left: auto;
+}
+@media (max-width: 1023px) {
+    .actions.order-actions, .actions.picker-actions {
+        gap: 70px;
+    }
+    .picker-page .pagination, .actions.picker-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
 }
 @media (min-width: 375px) {
     .picker-page-2 { display: none; }

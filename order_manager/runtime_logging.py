@@ -14,6 +14,8 @@ import weakref
 
 from fastapi.responses import JSONResponse
 
+from . import __version__
+
 
 @dataclass(frozen=True)
 class LogConfig:
@@ -56,6 +58,7 @@ def safe_traceback(error: BaseException) -> list[dict]:
 class JsonFormatter(logging.Formatter):
     def format(self, record):
         document = {"at": datetime.fromtimestamp(record.created, timezone.utc).isoformat(timespec="milliseconds"),
+                    "app_version": __version__,
                     "level": record.levelname, "message": record.getMessage(),
                     "operation": getattr(record, "operation", "application")}
         for key in ("journey_id", "revision", "operation_id", "event", "method", "route",
