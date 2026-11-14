@@ -173,8 +173,17 @@ async def check_order_browser(tmp_path, viewport):
             assert await page.get_by_role("heading", name="Buscador de Órdenes").count() == 1
             assert await page.locator(".order-search").count() == 1
             criterion = page.get_by_label("Buscar por", exact=True)
-            await criterion.select_option("id")
+            await criterion.select_option("product")
             search = page.get_by_label("Texto de búsqueda")
+            await search.fill("CAFÉ")
+            await page.locator(".order-search").get_by_role("button", name="Buscar").click()
+            assert await rows.count() == 5
+            await assert_layout(page, viewport)
+            await views.get_by_role("link", name="Siguiente").click()
+            assert await criterion.input_value() == "product"
+            assert await search.input_value() == "CAFÉ"
+            assert await rows.count() == 5
+            await criterion.select_option("id")
             await search.fill("90")
             await page.locator(".order-search").get_by_role("button", name="Buscar").click()
             assert await rows.count() == 1

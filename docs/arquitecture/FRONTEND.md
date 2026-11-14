@@ -1,4 +1,4 @@
-# Interfaz y plantillas de v0.3.1
+# Interfaz y plantillas de v0.3.2
 
 ## Presentación
 
@@ -47,6 +47,14 @@ agrega juntas al borrador, hasta 50 líneas. Buscar/Cambiar artículo de una lí
 solo modifica esa línea. Cancelar la selección conserva el editor anterior.
 Los cambios se envían al servidor mediante formularios; no hay actualización
 instantánea en el cliente.
+
+El acceso al selector está centrado y tiene una altura mínima de 56 px. Las
+acciones finales del selector y del editor tienen 32 px de separación desde
+1024 px de ancho y 70 px por debajo. Hasta 1023 px, la navegación del selector
+y sus acciones finales se disponen en columna. «Siguiente» se alinea a la derecha
+en todos los tamaños; la navegación queda separada de la aplicación de selección
+por un margen y un borde. Los controles de navegación y confirmación del selector miden al menos
+48 px de alto.
 
 Cada línea distingue inventario y producto nuevo. El servidor ignora los campos
 inactivos y valida categoría/subcategoría. Los artículos sin precio requieren uno
@@ -130,11 +138,14 @@ presentan como fichas con etiquetas. Los filtros y las páginas afectan la
 presentación, no los cálculos completos.
 
 - **Órdenes:** el listado sin búsqueda distribuye órdenes entre autores y ordena
-  por contador cronológico. El único Buscador de Órdenes ofrece Todos, Autor, ID
-  y Numeración. Autor admite coincidencia parcial sin acentos/mayúsculas; ID
+  por contador cronológico. El único Buscador de Órdenes ofrece Todos, Autor, Artículo,
+  ID y Numeración. Autor admite coincidencia parcial sin acentos/mayúsculas; ID
   busca contador exacto, con `#` opcional, o UUID completo; Numeración busca el
-  número manual exacto y devuelve todas sus repeticiones. Todos combina las
-  búsquedas anteriores. Se combina con el filtro de identidad de artículo.
+  número manual exacto y devuelve todas sus repeticiones. Artículo busca una
+  coincidencia parcial sin acentos/mayúsculas en los nombres guardados en las
+  líneas de la orden; devuelve cada orden una sola vez, aunque contenga varias
+  coincidencias. Todos combina las búsquedas anteriores. Se combina con el filtro
+  de identidad de artículo.
   Editar, cancelar, borrar, elegir artículos y corregir errores conservan contexto.
   Una edición conserva ID, contador y posición; cambiar un campo filtrado puede
   sacar la orden de ese resultado sin eliminarla.
@@ -143,8 +154,9 @@ presentación, no los cálculos completos.
   desplegables validados; un enlace de edición inexistente devuelve 404.
 - **Catálogo vendido:** orden por unidades descendentes y nombre; muestra unidades
   e importe. Su página es independiente del inventario y conserva sus filtros.
-- **Registros:** historial del más reciente al más antiguo, con fecha, acción y
-  detalle. Consultarlo no genera eventos ni modifica descargas.
+- **Registros:** historial del más reciente al más antiguo, con fecha, acción,
+  detalle y versión de origen. Los eventos anteriores sin versión muestran
+  «No registrada». Consultarlo no genera eventos ni modifica descargas.
 
 Las páginas fuera de rango se ajustan. La URL del CSS incluye un hash para evitar
 vistas duplicadas por una hoja antigua.

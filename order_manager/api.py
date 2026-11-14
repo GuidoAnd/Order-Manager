@@ -20,7 +20,7 @@ from fastapi.responses import (
 )
 from pydantic import BaseModel, BeforeValidator, Field
 
-from . import journey_results, web
+from . import __version__, journey_results, web
 from .article_search import ArticleSearch
 from .export_formats import ExportFormat, download_file
 from .store import MAX_INPUT_INTEGER, DomainError, Store
@@ -106,7 +106,7 @@ def make_app(global_file: Path | None = None, *, data_dir: Path | None = None,
             store.runtime_log.record(logging.INFO, "Aplicación detenida.", "shutdown")
             store.runtime_log.close()
 
-    app = FastAPI(title="Order Manager", version="0.3.1", lifespan=lifespan)
+    app = FastAPI(title="Order Manager", version=__version__, lifespan=lifespan)
     notices = OperationNotices()
     app.state.operation_notices = notices
     app.add_middleware(NoticeContext, notices=notices)

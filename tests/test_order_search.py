@@ -155,3 +155,46 @@ def test_changed_search_value_can_remove_order_without_deleting_it(catalog):
     assert numbers(first_view(html)) == [3]
     assert len(app.state.store.get_journey()['orders']) == 14
     assert numbers(first_view(search(app, 'id', '#1'))) == [1]
+
+
+def test_product_search_uses_saved_names_without_duplicates_or_writes(catalog):
+    app, authors, _, _ = catalog
+    store = app.state.store
+    line = dict(name='Té de limón', category='Otros', subcategory='Otros',
+                quantity=1, unit_price=100)
+    matching = store.save_order(authors[0]['id'], [line, {**line, 'name': 'Té frío'}],
+                                series='10', serial_number=40)
+    store.save_order(authors[1]['id'], [{**line, 'name': 'Jugo'}],
+                     series='10', serial_number=41)
+    article = next(a for a in store.get_available_articles() if a['name'] == line['name'])
+    store.update_article(article['id'], {**article, 'name': 'Limonada'})
+    before = store._state()
+    revision = store.storage.revision
+    assert numbers(first_view(search(app, 'product', 'TE'))) == [matching['number']]
+    assert numbers(first_view(search(app, 'product', 'LIMON'))) == [matching['number']]
+    assert numbers(first_view(search(app, 'all', 'limon'))) == [matching['number']]
+    assert numbers(first_view(search(app, 'product', 'Limonada'))) == []
+    assert numbers(first_view(search(app, 'product', 'José'))) == []
+    assert numbers(first_view(search(app, 'product', '<img src=x>'))) == []
+    assert store._state() == before and store.storage.revision == revision
+
+
+def test_product_search_keeps_paging_editor_picker_and_identity_filter(catalog):
+    app, _, article, orders = catalog
+    state = dict(page='2', article=article['id'], q=article['name'], search_by='product')
+    html = search(app, 'product', article['name'], page=2, article=article['id'])
+    assert set(numbers(first_view(html))) == {6, 7, 8, 9, 10}
+    previous = re.search(r'href="([^"]+)">Anterior', first_view(html)).group(1)
+    assert state_of(previous) == {**state, 'page': '1'}
+    status, _, html = request(app, 'GET', f'/ordenes/{orders[5]["id"]}/editar?' + urlencode(state))
+    assert status == 200
+    assert state_of(re.search(r'href="([^"]+)">Cancelar', html).group(1)) == state
+    values = {**editor(app, orders[5]['id']), **state, 'author_id': orders[5]['author_id']}
+    status, headers, _ = post(app, {**values, 'action': 'pick'})
+    assert status == 303
+    token = urlsplit(headers['location']).path.split('/')[-2]
+    entry = app.state.order_drafts.get(token)
+    assert {key: str(entry['values'][key]) for key in state} == state
+    status, headers, _ = post(app, {**values, 'quantity_0': '2'})
+    assert status == 303 and state_of(headers['location']) == state
+    assert set(numbers(first_view(request(app, 'GET', headers['location'])[2]))) == {6, 7, 8, 9, 10}

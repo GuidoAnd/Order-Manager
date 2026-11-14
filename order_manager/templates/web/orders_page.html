@@ -10,13 +10,14 @@
                 <select name="search_by" aria-label="Buscar por">
                     <option value="all"{% if search_by == 'all' %} selected{% endif %}>Todos los criterios</option>
                     <option value="author"{% if search_by == 'author' %} selected{% endif %}>Autor</option>
+                    <option value="product"{% if search_by == 'product' %} selected{% endif %}>Artículo</option>
                     <option value="id"{% if search_by == 'id' %} selected{% endif %}>ID automático</option>
                     <option value="serial"{% if search_by == 'serial' %} selected{% endif %}>Numeración</option>
                 </select>
             </label>
             <label>Texto de búsqueda
                 <input type="search" name="q" value="{{ query }}"
-                       placeholder="Nombre, #90 o 005" aria-describedby="order-search-help">
+                       placeholder="Autor, artículo, #90 o 005" aria-describedby="order-search-help">
             </label>
             <p id="order-search-help">ID automático: #90. Numeración manual: 005.</p>
             <div class="actions">

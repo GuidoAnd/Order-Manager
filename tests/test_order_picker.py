@@ -213,7 +213,7 @@ def submit_expired(app, key):
     return request(app, 'POST', PATH, {'editor_token': key, 'action': 'apply'}, form=True)
 
 
-@pytest.mark.parametrize('viewport', VIEWPORTS)
+@pytest.mark.parametrize('viewport', VIEWPORTS + [(1000, 768), (1020, 768), (1023, 768), (1024, 768)])
 def test_browser_multiple_selection_preserves_fields_and_layout(app, viewport):
     async def run():
         async with async_playwright() as p:
@@ -228,8 +228,24 @@ def test_browser_multiple_selection_preserves_fields_and_layout(app, viewport):
                 await page.goto('http://127.0.0.1/ordenes/nueva')
                 await page.get_by_label('Autor', exact=True).select_option(label='Ana')
                 await page.get_by_label('Numeración', exact=True).fill('007')
-                await page.get_by_role('button', name='Elegir artículos del inventario', exact=True).click()
+                pick = page.get_by_role('button', name='Elegir artículos del inventario', exact=True)
+                pick_box = await pick.bounding_box()
+                parent_box = await page.locator('.order-pick-actions').bounding_box()
+                assert pick_box['height'] >= 56
+                assert abs(pick_box['x'] + pick_box['width'] / 2 - parent_box['x'] - parent_box['width'] / 2) <= 1
+                await pick.click()
                 form = page.locator('.picker-page:visible')
+                next_box = await form.get_by_role('button', name='Siguiente', exact=True).bounding_box()
+                apply_box = await form.get_by_role('button', name='Agregar seleccionados', exact=True).bounding_box()
+                back_box = await form.get_by_role('link', name='Volver sin aplicar selección', exact=True).bounding_box()
+                expected_gap = 70 if viewport[0] < 1024 else 32
+                nav_box = await form.locator('.pagination').bounding_box()
+                assert abs(next_box['x'] + next_box['width'] - nav_box['x'] - nav_box['width']) <= 1
+                assert next_box['width'] < nav_box['width']
+                assert apply_box['y'] - next_box['y'] - next_box['height'] >= 32
+                assert max(back_box['x'] - apply_box['x'] - apply_box['width'],
+                           back_box['y'] - apply_box['y'] - apply_box['height']) == pytest.approx(expected_gap, abs=1)
+                assert min(next_box['height'], apply_box['height'], back_box['height']) >= 44
                 assert await page.locator('.picker-page:visible').count() == 1
                 assert await form.locator('.picker-card').count() == (2 if viewport[0] < 375 else 3 if viewport[0] < 651 else 4 if viewport[0] < 1024 else 5)
                 await assert_layout(page, viewport)
@@ -255,6 +271,10 @@ def test_browser_multiple_selection_preserves_fields_and_layout(app, viewport):
                 assert await page.locator('[name=quantity_0]').input_value() == '2'
                 assert await page.locator('[name=quantity_1]').input_value() == '3'
                 await assert_layout(page, viewport)
+                save_box = await page.get_by_role('button', name='Guardar orden', exact=True).bounding_box()
+                cancel_box = await page.get_by_role('link', name='Cancelar', exact=True).bounding_box()
+                assert max(cancel_box['x'] - save_box['x'] - save_box['width'],
+                           cancel_box['y'] - save_box['y'] - save_box['height']) == pytest.approx(expected_gap, abs=1)
                 await page.get_by_role('button', name='Guardar orden', exact=True).click()
                 assert await page.locator('#order-results').is_visible()
                 saved = Store(app.state.store.global_file).get_journey()['orders']

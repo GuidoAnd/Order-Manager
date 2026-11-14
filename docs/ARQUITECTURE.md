@@ -1,6 +1,6 @@
-# Arquitectura de Order Manager — v0.3.1
+# Arquitectura de Order Manager — v0.3.2
 
-El [resumen de v0.3.1](version/v0_3_1.md) registra el alcance y su validación final.
+El [resumen de v0.3.2](version/v0_3_2.md) registra el alcance y su validación final.
 
 ## Componentes
 
@@ -11,6 +11,7 @@ El supervisor gestiona jornadas, autores, catálogo, órdenes, ventas y descarga
 | --- | --- |
 | `api.py` de la raíz | Expone la aplicación ASGI definida en `order_manager/api.py`. |
 | `order_manager/api.py` | Rutas JSON, formularios y ciclo de vida. |
+| `order_manager/__init__.py` | Identificador de versión compartido por API, interfaz y registros. |
 | `store.py` | Reglas de negocio, bloqueo y confirmación de acciones. |
 | `persistence.py`, `state_validation.py` | Revisiones coordinadas, integridad y recuperación. |
 | `journey_export.py`, `export_formats.py` | Documento de cierre y formatos JSON, CSV y ZIP. |
@@ -41,7 +42,9 @@ El cierre conserva un snapshot previo. Recuperarlo revierte el cierre y sus
 acumulados, descarta la jornada abierta tras confirmación y conserva el catálogo
 vigente. Las tandas abiertas se cierran en la exportación; el snapshot conserva
 su estado previo para restaurarlas. Los archivos nuevos se generan al cerrar otra vez. El historial de
-acciones es durable y está separado del diagnóstico rotado.
+acciones es durable y está separado del diagnóstico rotado. Los nuevos eventos
+y diagnósticos incluyen `app_version`; los anteriores conservan su contenido.
+Este identificador es independiente del formato del JSON de exportación.
 
 ## Operación y límites
 
